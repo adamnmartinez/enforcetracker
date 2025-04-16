@@ -59,6 +59,7 @@ export default function Signup() {
                 placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
+                placeholderTextColor={placeholderColor}
                 secureTextEntry
             />
             <TextInput
@@ -66,9 +67,12 @@ export default function Signup() {
                 placeholder="Confirm Password"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
+                placeholderTextColor={placeholderColor}
                 secureTextEntry
             />
-            <Button title="Sign Up" onPress={handleSignup} />
+            <Button title="Sign Up" onPress={() => {
+                confirmPassword == password ? handleSignup() : Alert.alert("Error", "Passwords don't match")
+            }} />
             <Button title="Already have an account? Login" onPress={() => router.push("/login")} />
         </View>
     );

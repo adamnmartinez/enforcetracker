@@ -2,6 +2,7 @@ import React, {useState, useContext} from "react";
 import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
+import { authStyle, placeholderColor } from "./style";
 
 export default function Login() {
     const { signIn } = useContext(AuthContext);
@@ -32,6 +33,8 @@ export default function Login() {
 
     return (
         <View style={styles.container}>
+            <Text style={styles.header}>PinPoint</Text>
+
             <Text style={styles.title}>Login</Text>
             <TextInput
                 style={styles.input}
@@ -39,6 +42,7 @@ export default function Login() {
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
+                placeholderTextColor={placeholderColor}
                 autoCapitalize="none"
             />
             <TextInput
@@ -46,6 +50,7 @@ export default function Login() {
                 placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
+                placeholderTextColor={placeholderColor}
                 secureTextEntry
             />
             <Button title="Login" onPress={handleLogin} />
@@ -54,22 +59,4 @@ export default function Login() {
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: "center",
-        padding: 20,
-    },
-    title: {
-        fontSize: 24,
-        textAlign: "center",
-        padding: 20,
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: "#ccc",
-        borderRadius: 5,
-        padding: 10,
-        marginBottom: 10,
-    }
-});
+const styles = authStyle

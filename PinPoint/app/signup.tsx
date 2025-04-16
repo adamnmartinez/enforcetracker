@@ -2,6 +2,7 @@ import React, { useState, useContext } from "react";
 import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
+import { authStyle, placeholderColor } from "./style";
 
 export default function Signup() {
     const { signUp } = useContext(AuthContext);
@@ -32,6 +33,7 @@ export default function Signup() {
 
     return (
         <View style={styles.container}>
+            <Text style={styles.header}>PinPoint</Text>
             <Text style={styles.title}>Sign Up</Text>
             <TextInput
                 style={styles.input}
@@ -54,22 +56,4 @@ export default function Signup() {
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: "center",
-        padding: 20
-    },
-    title: {
-        fontSize: 24,
-        marginBottom: 10,
-        textAlign: "center"
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: "#ccc",
-        borderRadius: 5,
-        padding: 10,
-        marginBottom: 10
-    }
-});
+const styles = authStyle

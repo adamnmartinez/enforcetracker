@@ -3,24 +3,27 @@ import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { authStyle, placeholderColor } from "./style";
+import { HOST } from "./server";
 
 export default function Signup() {
     const { signUp } = useContext(AuthContext);
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [username, setUsername] = useState("")
 
     const handleSignup = async () => {
         try {
-            const response = await fetch("https://backend.com/api/signup", {
+            const response = await fetch(HOST + "/api/signup", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email, username, password }),
             });
             const data = await response.json();
-            if (response.ok) {
+            if (response.status == 200) {
                 await signUp(data.token);
                 router.replace("/home");
             } else {
@@ -45,9 +48,24 @@ export default function Signup() {
             />
             <TextInput
                 style={styles.input}
+                placeholder="Username"
+                value={username}
+                onChangeText={setUsername}
+                placeholderTextColor={placeholderColor}
+                autoCapitalize="none"
+            />
+            <TextInput
+                style={styles.input}
                 placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
+                secureTextEntry
+            />
+            <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
                 secureTextEntry
             />
             <Button title="Sign Up" onPress={handleSignup} />

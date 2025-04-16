@@ -2,25 +2,26 @@ import React, {useState, useContext} from "react";
 import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
+import { HOST } from "./server";
 import { authStyle, placeholderColor } from "./style";
 
 export default function Login() {
     const { signIn } = useContext(AuthContext);
     const router = useRouter();
-    const [email, setEmail] = useState("");
+    const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
 
     const handleLogin = async () => {
         try {
-            const response = await fetch("https://backend.com/api/login", {
+            const response = await fetch(HOST + "/api/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ username, password }),
             });
             const data = await response.json();
-            if (response.ok) {
+            if (response.status == 200) {
                 await signIn(data.token);
                 router.replace("/home");
             } else {
@@ -38,10 +39,9 @@ export default function Login() {
             <Text style={styles.title}>Login</Text>
             <TextInput
                 style={styles.input}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
+                placeholder="Username"
+                value={username}
+                onChangeText={setUsername}
                 placeholderTextColor={placeholderColor}
                 autoCapitalize="none"
             />

@@ -23,7 +23,7 @@ export default function Signup() {
                 body: JSON.stringify({ email, username, password }),
             });
             const data = await response.json();
-            if (response.status == 200) {
+            if (response.status == 201) {
                 await signUp(data.token);
                 router.replace("/home");
             } else {

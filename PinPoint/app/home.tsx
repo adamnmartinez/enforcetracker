@@ -9,7 +9,7 @@ export default function Home() {
     const { signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<LatLng[]>([]);
-    const [ mapRegion, setMapRegion ] = useState<Region>({
+    const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
         latitudeDelta: 0.1, 
@@ -58,15 +58,14 @@ export default function Home() {
 
         setMarkers((prevMarkers) => {
             const newMarkers = [...prevMarkers, mapPoint]
-            Alert.alert("You created a pin!", `Number of Pins is ${newMarkers.length}`)
+            Alert.alert("Pin Created!", `New pin at ${mapPoint.longitude}, ${mapPoint.latitude}`)
             return newMarkers
         })
     }
 
     const handleMarkerClick = async (event: MarkerPressEvent) => {
         const markerPoint = event.nativeEvent.coordinate
-
-        Alert.alert(`You pressed on a pin at ${markerPoint.latitude}, ${markerPoint.longitude}`)
+        Alert.alert("Pin", `${markerPoint.longitude}, ${markerPoint.latitude}`)
     }
 
     return (

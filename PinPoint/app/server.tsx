@@ -1,7 +1,7 @@
 // PRODUCTION
-const HOST = "https://backend.com"
+//const HOST = "https://backend.com"
 
 // TESTING
-//const HOST = "http://<ADDRESS>:8000"
+const HOST = "http://<ADDRESS>:8000"
 
 export { HOST }

@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Dimensions } from "react-native";
 
 const authStyle = StyleSheet.create({
     container: {
@@ -26,6 +26,22 @@ const authStyle = StyleSheet.create({
     }
 });
 
+const homeStyle = StyleSheet.create({
+    container: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center"
+    },
+    title: {
+        fontSize: 24,
+        marginBottom: 20,
+    },
+    map: {
+        width: Dimensions.get('window').width,
+        height: Dimensions.get('window').height / 1.3,
+    }
+});
+
 const placeholderColor = "#ccc"
 
-export { authStyle, placeholderColor }
+export { authStyle, homeStyle, placeholderColor }

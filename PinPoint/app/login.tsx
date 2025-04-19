@@ -55,6 +55,7 @@ export default function Login() {
             />
             <Button title="Login" onPress={handleLogin} />
             <Button title="Don't have an account? Sign Up" onPress={() => router.push("/signup")} />
+            <Button title="Test Home Page" onPress={() => router.push("/home")} />
         </View>
     );
 }

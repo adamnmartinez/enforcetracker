@@ -1,15 +1,14 @@
+import { LatLng } from "react-native-maps";
+
 export class Pin {
-    coordinates: {
-        latitude: number,
-        longitude: number
-    }
+    coordinates: LatLng
     category: string;
     id: string;
 
-    constructor(lat: number, long: number, category: string, id: string) {
+    constructor(coord: LatLng, category: string, id: string) {
         this.coordinates = {
-            latitude: lat,
-            longitude: long,
+            latitude: coord.latitude,
+            longitude: coord.longitude,
         }
         this.category = category;
         this.id = id;

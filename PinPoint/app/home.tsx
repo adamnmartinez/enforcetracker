@@ -1,20 +1,26 @@
 import React, { useContext, useRef, useState } from "react";
-import { View, Text, Button, StyleSheet, Alert } from "react-native";
+import { View, Text, Button, Alert } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
+import { Pin } from "./pin";
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
     const router = useRouter();
-    const [markers, setMarkers] = useState<LatLng[]>([]);
+    const [markers, setMarkers] = useState<Pin[]>([]);
+    const [showInspector, setShowInspector] = useState<Boolean>(false);
+    const [inspectID, setInspectID] = useState<string>("")
     const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
         latitudeDelta: 0.1, 
         longitudeDelta: 0.1,
     })
+
+    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SERVER SIDE
+    const [IDTracker, setIDTracker] = useState<number>(0)
 
     const defaultCamera = {
         center: {
@@ -27,7 +33,7 @@ export default function Home() {
         zoom: 6
     }
 
-    const [ cameraConfig, setCameraConfig ] = useState<Camera>(defaultCamera)
+    const [cameraConfig, setCameraConfig] = useState<Camera>(defaultCamera)
 
     const mapRef = useRef<MapView>(null)
 
@@ -36,8 +42,15 @@ export default function Home() {
         router.replace("/login");
     };
 
-    const handleMapClick = async (event: LongPressEvent) => {
+    const handleMapLongPress = async (event: LongPressEvent) => {
         const mapPoint = event.nativeEvent.coordinate
+
+        // TODO: CREATE MENU TO SELECT CATEGORY, UPLOAD PIN AND AUXILLARY DATA (time of report, location) TO DB
+
+        setShowInspector(false)
+
+        const newPin = new Pin(mapPoint.latitude, mapPoint.longitude, "Not Implemented", IDTracker.toString())
+        setIDTracker((prev) => prev + 1)
 
         setMapRegion({
             latitude: mapPoint.latitude,
@@ -47,17 +60,17 @@ export default function Home() {
         })
 
         mapRef.current?.getCamera().then((cam) => {
-            setCameraConfig({
+            mapRef.current?.animateCamera({
                 center: {latitude: mapPoint.latitude, longitude: mapPoint.longitude},
-                heading: 0,
+                heading: cam.heading,
                 pitch: 0,
                 zoom: cam.zoom,
                 altitude: cam.altitude
-            })
+            }, { duration: 750 })
         })
 
         setMarkers((prevMarkers) => {
-            const newMarkers = [...prevMarkers, mapPoint]
+            const newMarkers = [...prevMarkers, newPin]
             Alert.alert("Pin Created!", `New pin at ${mapPoint.longitude}, ${mapPoint.latitude}`)
             return newMarkers
         })
@@ -65,7 +78,20 @@ export default function Home() {
 
     const handleMarkerClick = async (event: MarkerPressEvent) => {
         const markerPoint = event.nativeEvent.coordinate
-        Alert.alert("Pin", `${markerPoint.longitude}, ${markerPoint.latitude}`)
+
+        mapRef.current?.getCamera().then((cam) => {
+            mapRef.current?.animateCamera({
+                center: {latitude: markerPoint.latitude, longitude: markerPoint.longitude},
+                heading: cam.heading,
+                pitch: 0,
+                zoom: cam.zoom,
+                altitude: cam.altitude
+            }, { duration: 750 })
+        })
+
+        // TODO: GET PIN DATA FROM DB USING ID
+
+        setShowInspector(true)
     }
 
     return (
@@ -77,13 +103,21 @@ export default function Home() {
                 style={styles.map}
                 camera={cameraConfig}
                 initialRegion={mapRegion}
-                onLongPress={(event) => {handleMapClick(event)}}
+                onLongPress={(event) => {handleMapLongPress(event)}}
                 onMarkerPress={(event) => {handleMarkerClick(event)}}
+                onPress={() => setShowInspector(false)}
             >
-            {markers.map((coord, index) => (
-                <Marker key={index} coordinate={coord}/>
+            {markers.map((data, index) => (
+                <Marker key={index} onPress={() => {setInspectID(data.id)}} coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}/>
             ))}
             </MapView>
+            {showInspector && 
+                <View style={styles.popup}>
+                    <Text style={styles.popupHeader}>Pin Inspection</Text>
+                    <Text style={styles.popupText}>ID: {inspectID}</Text>
+                    <Button title="Close" onPress={() => {setShowInspector(false)}}/>
+                </View>
+            }
             <Button title="Logout" onPress={handleLogout} />
         </View>
     );

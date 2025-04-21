@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
 import { Pin } from "./pin";
-import { Picker } from '@react-native-picker/picker';
+import { Dropdown } from "react-native-element-dropdown"
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
@@ -22,7 +22,7 @@ export default function Home() {
 
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
-    const [inspectID, setInspectID] = useState<string>("")
+    const [inspected, setInspected] = useState<Pin>()
 
     // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
     const [mapRegion, setMapRegion] = useState<Region>({
@@ -32,22 +32,42 @@ export default function Home() {
         longitudeDelta: 0.1,
     })
 
+    // Creator menu dropdown options, "Categories"
+    const data = [
+        { label: 'Police', value: 'Police' },
+        { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
+        { label: 'Parking Enforcement', value: 'Parking Enforcment' },
+        { label: 'Robbery', value: 'Robbery' },
+        { label: 'Tresspasser', value: 'Tresspassing' },
+    ];  
+
+    // Convert category string to CSS Color for display
+    const getPinColor = (category: string) => {
+        switch(category){
+            case "Police":
+                return "blue"
+            case "Immigration Enforcement":
+                return "red"
+            case "Parking Enforcment":
+                return "yellow"
+            case "Robbery":
+                return "purple"
+            case "Tresspassing":
+                return "brown"
+            
+        }
+    } 
+
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
 
-    const defaultCamera = {
-        center: {
-            latitude: 36.974117,
-            longitude: -122.030792,
-        },
-        pitch: 0,
-        heading: 0,
-        altitude: 10000,
-        zoom: 6
+    // Method for hiding windows
+    const hideAllPopups = () => {
+        setShowInspector(false)
+        setShowCreator(false)
     }
 
-    const [cameraConfig, setCameraConfig] = useState<Camera>(defaultCamera)
-
+    // Reference to map to retrieve camera data
     const mapRef = useRef<MapView>(null)
 
     const handleLogout = async () => {
@@ -56,12 +76,11 @@ export default function Home() {
     };
 
     const handleMapLongPress = async (event: LongPressEvent) => {
+        // Set new pin location
         const mapPoint = event.nativeEvent.coordinate
-
-        // Prepare to create pin, save location and reveal creator window.
-
         setPinLocation(mapPoint)
 
+        // Animate camera movement
         mapRef.current?.getCamera().then((cam) => {
             mapRef.current?.animateCamera({
                 center: mapPoint,
@@ -72,14 +91,18 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        setShowInspector(false)
+        // Set Menus
+        hideAllPopups()
         setShowCreator(true)
     }
 
     const handleCreatePin = async() => {
+        // Create new pin object and assign ID
         const newPin = new Pin(pinLocation, pinCategory, IDTracker.toString())
         setIDTracker((prev) => prev + 1)
 
+        // Map will be re-rendered on pin creation.
+        // Mirror user's map and camera setup at time of creation
         setMapRegion({
             latitude: pinLocation.latitude,
             longitude: pinLocation.longitude,
@@ -97,13 +120,23 @@ export default function Home() {
             }, { duration: 750 })
         })
 
+        // Update markers
         setMarkers((prevMarkers) => {
             const newMarkers = [...prevMarkers, newPin]
             Alert.alert("Pin Created!", `New pin at ${pinLocation.longitude}, ${pinLocation.latitude}`)
             return newMarkers
         })
 
-        setShowCreator(false)
+        // Hide windows
+        hideAllPopups()
+    }
+
+    const setInspectData = (id: string, coordinate: LatLng, category: string) => {
+        setInspected({
+            id: id,
+            coordinates: coordinate,
+            category: category,
+        })
     }
 
     const handleMarkerClick = async (event: MarkerPressEvent) => {
@@ -119,9 +152,9 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        // TODO: GET PIN DATA FROM DB USING ID
+        // TODO: GET AUXILLARY PIN DATA FROM DB USING ID
 
-        setShowCreator(false)
+        hideAllPopups()
         setShowInspector(true)
     }
 
@@ -132,24 +165,26 @@ export default function Home() {
                 key={markers.length}
                 ref={mapRef}
                 style={styles.map}
-                camera={cameraConfig}
                 initialRegion={mapRegion}
                 onLongPress={(event) => {handleMapLongPress(event)}}
                 onMarkerPress={(event) => {handleMarkerClick(event)}}
-                onPress={() => {
-                    setShowInspector(false)
-                    setShowCreator(false)
-                }}
+                onPress={() => hideAllPopups()}
             >
             {markers.map((data, index) => (
-                <Marker key={index} onPress={() => {setInspectID(data.id)}} coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}/>
+                <Marker 
+                    key={index} 
+                    pinColor={getPinColor(data.category)}
+                    onPress={() => {setInspectData(data.id, data.coordinates, data.category)}} 
+                    coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+                />
             ))}
             </MapView>
             {showInspector && 
                 <View style={styles.popup}>
                     <Text style={styles.popupHeader}>Pin Inspection</Text>
-                    <Text style={styles.popupText}>ID: {inspectID}</Text>
-                    <Button title="Close" onPress={() => {setShowInspector(false)}}/>
+                    <Text style={styles.popupText}>ID: {inspected?.id}</Text>
+                    <Text style={styles.popupText}>Category: {inspected?.category}</Text>
+                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }
             {showCreator && 
@@ -157,8 +192,26 @@ export default function Home() {
                     <Text style={styles.popupHeader}>Create a Pin</Text>
                     <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
                     <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                    <Dropdown
+                        style={styles.dropdown}
+                        placeholderStyle={styles.popupText}
+                        selectedTextStyle={styles.popupText}
+                        inputSearchStyle={styles.popupText}
+                        data={data}
+                        maxHeight={300}
+                        labelField="label"
+                        valueField="value"
+                        placeholder={'Select Category...'}
+                        searchPlaceholder="Search..."
+                        value={pinCategory}
+                        search={false}
+                        onChange={item => {
+                          setPinCategory(item.value);
+                        }}
+                        dropdownPosition="top"
+                    />
                     <Button title="Create Pin" onPress={() => {handleCreatePin()}}/>
-                    <Button title="Close" onPress={() => {setShowCreator(false)}}/>
+                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }
             <Button title="Logout" onPress={handleLogout} />

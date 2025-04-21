@@ -45,12 +45,12 @@ const homeStyle = StyleSheet.create({
         flex: 1,
         position: "absolute",
         borderRadius: 10,
-        top: Dimensions.get('window').height / 1.5,
+        top: Dimensions.get('window').height * 0.65,
         left: 0,
         zIndex: 9999,
         elevation: 10,
         width : Dimensions.get('window').width,
-        height: Dimensions.get('window').height / 2,
+        height: Dimensions.get('window').height,
         color: "white",
         backgroundColor: "white",
         paddingTop: 10,
@@ -70,6 +70,10 @@ const homeStyle = StyleSheet.create({
     popupButton: {
         backgroundColor: "blue",
         color: "red",
+    },
+    dropdown: {
+        padding: 20,
+        
     }
 });
 

@@ -23,6 +23,7 @@ export default function Home() {
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
     const [inspected, setInspected] = useState<Pin>()
+    const [endorsed, setEndorsed] = useState<string[]>([])
 
     // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
     const [mapRegion, setMapRegion] = useState<Region>({
@@ -46,15 +47,21 @@ export default function Home() {
         switch(category){
             case "Police":
                 return "blue"
+
             case "Immigration Enforcement":
                 return "red"
+
             case "Parking Enforcment":
                 return "yellow"
+
             case "Robbery":
                 return "purple"
+
             case "Tresspassing":
                 return "brown"
-            
+
+            default:
+                return ""
         }
     } 
 
@@ -98,6 +105,11 @@ export default function Home() {
 
     const handleCreatePin = async() => {
         // Create new pin object and assign ID
+        if (pinCategory == "") {
+            Alert.alert("Error", "Please select a category")
+            return
+        }
+
         const newPin = new Pin(pinLocation, pinCategory, IDTracker.toString())
         setIDTracker((prev) => prev + 1)
 
@@ -127,15 +139,19 @@ export default function Home() {
             return newMarkers
         })
 
+        setEndorsed((prev) => [...prev, newPin.id])
+        newPin.validity = newPin.validity + 1
+
         // Hide windows
         hideAllPopups()
     }
 
-    const setInspectData = (id: string, coordinate: LatLng, category: string) => {
+    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
         setInspected({
             id: id,
-            coordinates: coordinate,
+            coordinates: coordinates,
             category: category,
+            validity: validity
         })
     }
 
@@ -152,11 +168,49 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        // TODO: GET AUXILLARY PIN DATA FROM DB USING ID
-
         hideAllPopups()
         setShowInspector(true)
     }
+
+    const handleValidate = async (pin_id: string) => {
+        if (pin_id !== "") {
+            if (!endorsed.includes(pin_id)) {
+                setEndorsed((prev) => [...prev, pin_id])
+
+                const marker = markers.find(obj => {
+                    return obj.id == pin_id
+                })
+
+                if (marker) {
+                    marker.validity = marker.validity + 1
+                    setInspected(marker)
+                }
+                
+            } else {
+                Alert.alert("You have already confirmed this report!")
+            }
+        }
+    }   
+    
+    const handleUnvalidate = async (pin_id: string) => {
+        if (pin_id !== "") {
+            if (endorsed.includes(pin_id)) {
+                setEndorsed((prev) => prev.filter(item => item != pin_id))
+
+                const marker = markers.find(obj => {
+                    return obj.id == pin_id
+                })
+
+                if (marker) {
+                    marker.validity = marker.validity - 1
+                    setInspected(marker)
+                }
+                
+            } else {
+                Alert.alert("You cannot unconfirm a report you have not confirmed!")
+            }
+        }
+    }  
 
     return (
         <View style={styles.container}>
@@ -174,7 +228,7 @@ export default function Home() {
                 <Marker 
                     key={index} 
                     pinColor={getPinColor(data.category)}
-                    onPress={() => {setInspectData(data.id, data.coordinates, data.category)}} 
+                    onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
                     coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                 />
             ))}
@@ -184,6 +238,10 @@ export default function Home() {
                     <Text style={styles.popupHeader}>Pin Inspection</Text>
                     <Text style={styles.popupText}>ID: {inspected?.id}</Text>
                     <Text style={styles.popupText}>Category: {inspected?.category}</Text>
+                    <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
+                    { inspected && endorsed.includes(inspected.id) &&
+                        <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
+                    }
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }

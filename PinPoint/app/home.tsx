@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { View, Text, Button, Alert } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -6,6 +6,7 @@ import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
+import { HOST } from "./server";
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
@@ -103,7 +104,7 @@ export default function Home() {
         setShowCreator(true)
     }
 
-    const handleCreatePin = async() => {
+    const handleNewPin = async() => {
         // Create new pin object and assign ID
         if (pinCategory == "") {
             Alert.alert("Error", "Please select a category")
@@ -268,7 +269,7 @@ export default function Home() {
                         }}
                         dropdownPosition="top"
                     />
-                    <Button title="Create Pin" onPress={() => {handleCreatePin()}}/>
+                    <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }

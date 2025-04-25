@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { View, Text, Button, Alert } from "react-native";
+import { View, Text, Button, Alert, Pressable } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
@@ -7,6 +7,7 @@ import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Came
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import { HOST } from "./server";
+import { runOnRuntime } from "react-native-reanimated";
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
@@ -65,6 +66,47 @@ export default function Home() {
                 return ""
         }
     } 
+
+    // Fetch Pins from DB
+    const fetchPins = () => {
+        try {
+            fetch(HOST + "/api/fetchpins", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                }
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        let serverPins: Pin[] = []
+                        for (let i = 0; i < data.pins.length; i++) {
+                            serverPins = [...serverPins, new Pin (
+                                {
+                                    latitude: data.pins[i].latitude,
+                                    longitude: data.pins[i].longitude,
+                                },
+                                data.pins[i].type,
+                                data.pins[i].pid
+                            )]
+                        }
+                        Alert.alert("Updating Pins...")
+                        setMarkers(serverPins)
+                    } else {
+                        Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured populating the user map...(500)")
+        }
+        
+    }
+
+    const refreshPins = () => { fetchPins() }
+
+    useEffect(() => {
+        fetchPins()
+    }, [])
 
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
@@ -145,6 +187,7 @@ export default function Home() {
 
         // Hide windows
         hideAllPopups()
+        refreshPins()
     }
 
     const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
@@ -273,7 +316,23 @@ export default function Home() {
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }
-            <Button title="Logout" onPress={handleLogout} />
+            {/* <Button title="Logout" onPress={handleLogout} />
+            <Button title="Refresh" onPress={refreshPins} /> */}
+            <View style={
+                {
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 50,
+                    marginTop: 10,
+                }
+            }>
+                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={refreshPins}>
+                    <Text style={styles.buttonText}>Refresh</Text>
+                </Pressable>
+                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={handleLogout}>
+                    <Text style={styles.buttonText}>Logout</Text>
+                </Pressable>
+            </View>
         </View>
     );
 }

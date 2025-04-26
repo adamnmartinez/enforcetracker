@@ -104,11 +104,42 @@ export default function Home() {
         
     }
 
+    
+
     const refreshPins = () => { fetchPins() }
 
     useEffect(() => {
         fetchPins()
     }, [])
+
+    // Fetch Pins from DB
+    const uploadPin = (category: string, coordinates: LatLng) => {
+        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
+        try {
+            fetch(HOST + "/api/pushpin", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    category: category,
+                    longitude: coordinates.longitude,
+                    latitude: coordinates.latitude,
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 201) {
+                        fetchPins()
+                    } else {
+                        Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured uploading the pin...(500)")
+        }
+        
+    }
 
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
@@ -177,12 +208,7 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        // Update markers
-        setMarkers((prevMarkers) => {
-            const newMarkers = [...prevMarkers, newPin]
-            Alert.alert("Pin Created!", `New pin at ${pinLocation.longitude}, ${pinLocation.latitude}`)
-            return newMarkers
-        })
+        uploadPin(pinCategory, pinLocation)
 
         setEndorsed((prev) => [...prev, newPin.id])
         newPin.validity = newPin.validity + 1

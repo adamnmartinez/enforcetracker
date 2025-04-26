@@ -2,6 +2,6 @@
 //const HOST = "https://backend.com"
 
 // TESTING
-const HOST = "<ADDRESS>:8000"
+const HOST = "http://<ADRESS>:8000"
 
 export { HOST }

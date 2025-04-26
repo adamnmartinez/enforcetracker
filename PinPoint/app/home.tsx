@@ -69,6 +69,7 @@ export default function Home() {
 
     // Fetch Pins from DB
     const fetchPins = () => {
+        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
         try {
             fetch(HOST + "/api/fetchpins", {
                 method: "GET",
@@ -89,8 +90,9 @@ export default function Home() {
                                 data.pins[i].pid
                             )]
                         }
-                        Alert.alert("Updating Pins...")
+                        //Alert.alert("DEBUG", "Got Pins, Updating...")
                         setMarkers(serverPins)
+                        //Alert.alert("DEBUG", `${JSON.stringify(markers)}`)
                     } else {
                         Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
                     }
@@ -316,8 +318,6 @@ export default function Home() {
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }
-            {/* <Button title="Logout" onPress={handleLogout} />
-            <Button title="Refresh" onPress={refreshPins} /> */}
             <View style={
                 {
                     flexDirection: "row",

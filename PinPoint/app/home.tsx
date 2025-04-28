@@ -7,13 +7,16 @@ import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Came
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import { HOST } from "./server";
-import { runOnRuntime } from "react-native-reanimated";
 
 export default function Home() {
-    const { signOut } = useContext(AuthContext);
+    const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
-    
+    const [userData, setUserData] = useState<{username: string, id: number}>({
+        username: "",
+        id: 0,
+    })
+
     // States for creating a new pin
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
@@ -86,7 +89,7 @@ export default function Home() {
                                     latitude: data.pins[i].latitude,
                                     longitude: data.pins[i].longitude,
                                 },
-                                data.pins[i].type,
+                                data.pins[i].category,
                                 data.pins[i].pid
                             )]
                         }
@@ -104,17 +107,46 @@ export default function Home() {
         
     }
 
-    
-
-    const refreshPins = () => { fetchPins() }
+    const refreshPins = () => { 
+        fetchPins() 
+    }
 
     useEffect(() => {
         fetchPins()
+        fetchUserData()
     }, [])
 
+    const fetchUserData = async () => {
+        try {
+            fetch(HOST + "/api/me", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "authorization": userToken || "",
+                }
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        Alert.alert(JSON.stringify(data))
+                        setUserData({
+                            username: data.username, 
+                            id: data.id,
+                        })
+                    } else {
+                        Alert.alert("User Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured getting user data...(500)")
+        }
+    }
+
     // Fetch Pins from DB
-    const uploadPin = (category: string, coordinates: LatLng) => {
+    const uploadPin = (category: string, coordinates: LatLng, author: number) => {
         //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
+        //Alert.alert("Token", SecureStore.getItem("token") || "No token")
+
         try {
             fetch(HOST + "/api/pushpin", {
                 method: "POST",
@@ -125,6 +157,7 @@ export default function Home() {
                     category: category,
                     longitude: coordinates.longitude,
                     latitude: coordinates.latitude,
+                    author_id: author,
                 })
             }).then((response) => {
                 response.json().then((data) => {
@@ -136,7 +169,7 @@ export default function Home() {
                 })
             })
         } catch (e) {
-            Alert.alert("Error", "An error occured uploading the pin...(500)")
+            Alert.alert("Error", e?.toString())
         }
         
     }
@@ -208,7 +241,7 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        uploadPin(pinCategory, pinLocation)
+        uploadPin(pinCategory, pinLocation, userData.id)
 
         setEndorsed((prev) => [...prev, newPin.id])
         newPin.validity = newPin.validity + 1

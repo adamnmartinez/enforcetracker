@@ -1,18 +1,21 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { View, Text, Button, Alert } from "react-native";
+import { TouchableOpacity } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
-import { HOST } from "./server";
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
     
+    // States for choice menu (pin or watch zone)
+    const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
+
     // States for creating a new pin
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
@@ -73,6 +76,7 @@ export default function Home() {
     const hideAllPopups = () => {
         setShowInspector(false)
         setShowCreator(false)
+        setShowChoiceMenu(false)
     }
 
     // Reference to map to retrieve camera data
@@ -101,7 +105,7 @@ export default function Home() {
 
         // Set Menus
         hideAllPopups()
-        setShowCreator(true)
+        setShowChoiceMenu(true)
     }
 
     const handleNewPin = async() => {
@@ -248,7 +252,17 @@ export default function Home() {
             }
             {showCreator && 
                 <View style={styles.popup}>
-                    <Text style={styles.popupHeader}>Create a Pin</Text>
+                    <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                        <TouchableOpacity onPress={() => {
+                            setShowCreator(false);
+                            setShowChoiceMenu(true);
+                        }}
+                        style={{ position: 'absolute', left: 0 }}
+                        >
+                            <Text style={{ fontSize: 24}}>←</Text>
+                        </TouchableOpacity>
+                        <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
+                    </View>
                     <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
                     <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
                     <Dropdown
@@ -271,6 +285,22 @@ export default function Home() {
                     />
                     <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                </View>
+            }
+            {showChoiceMenu &&
+                <View style={styles.popup}>
+                    <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                        <Text style={styles.popupHeader}>What would you like?</Text>
+                        <Button title="Add Pin" onPress={() => {
+                            hideAllPopups()
+                            setShowCreator(true)
+                            }}/>
+                        <Button title="Add Watch Zone" onPress={() => {
+                            hideAllPopups()
+                            Alert.alert("not yet implemented!")
+                            }}/>
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
                 </View>
             }
             <Button title="Logout" onPress={handleLogout} />

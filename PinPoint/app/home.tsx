@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { View, Text, Button, Alert } from "react-native";
+import { View, Text, Button, Alert, Pressable } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
@@ -9,10 +9,14 @@ import { Dropdown } from "react-native-element-dropdown"
 import { HOST } from "./server";
 
 export default function Home() {
-    const { signOut } = useContext(AuthContext);
+    const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
-    
+    const [userData, setUserData] = useState<{username: string, id: number}>({
+        username: "",
+        id: 0,
+    })
+
     // States for creating a new pin
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
@@ -65,6 +69,110 @@ export default function Home() {
                 return ""
         }
     } 
+
+    // Fetch Pins from DB
+    const fetchPins = () => {
+        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
+        try {
+            fetch(HOST + "/api/fetchpins", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                }
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        let serverPins: Pin[] = []
+                        for (let i = 0; i < data.pins.length; i++) {
+                            serverPins = [...serverPins, new Pin (
+                                {
+                                    latitude: data.pins[i].latitude,
+                                    longitude: data.pins[i].longitude,
+                                },
+                                data.pins[i].category,
+                                data.pins[i].pid
+                            )]
+                        }
+                        //Alert.alert("DEBUG", "Got Pins, Updating...")
+                        setMarkers(serverPins)
+                        //Alert.alert("DEBUG", `${JSON.stringify(markers)}`)
+                    } else {
+                        Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured populating the user map...(500)")
+        }
+        
+    }
+
+    const refreshPins = () => { 
+        fetchPins() 
+    }
+
+    useEffect(() => {
+        fetchPins()
+        fetchUserData()
+    }, [])
+
+    const fetchUserData = async () => {
+        try {
+            fetch(HOST + "/api/me", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "authorization": userToken || "",
+                }
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        Alert.alert(JSON.stringify(data))
+                        setUserData({
+                            username: data.username, 
+                            id: data.id,
+                        })
+                    } else {
+                        Alert.alert("User Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured getting user data...(500)")
+        }
+    }
+
+    // Fetch Pins from DB
+    const uploadPin = (category: string, coordinates: LatLng, author: number) => {
+        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
+        //Alert.alert("Token", SecureStore.getItem("token") || "No token")
+
+        try {
+            fetch(HOST + "/api/pushpin", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    category: category,
+                    longitude: coordinates.longitude,
+                    latitude: coordinates.latitude,
+                    author_id: author,
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 201) {
+                        fetchPins()
+                    } else {
+                        Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", e?.toString())
+        }
+        
+    }
 
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
@@ -133,18 +241,14 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        // Update markers
-        setMarkers((prevMarkers) => {
-            const newMarkers = [...prevMarkers, newPin]
-            Alert.alert("Pin Created!", `New pin at ${pinLocation.longitude}, ${pinLocation.latitude}`)
-            return newMarkers
-        })
+        uploadPin(pinCategory, pinLocation, userData.id)
 
         setEndorsed((prev) => [...prev, newPin.id])
         newPin.validity = newPin.validity + 1
 
         // Hide windows
         hideAllPopups()
+        refreshPins()
     }
 
     const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
@@ -273,7 +377,21 @@ export default function Home() {
                     <Button title="Close" onPress={() => {hideAllPopups()}}/>
                 </View>
             }
-            <Button title="Logout" onPress={handleLogout} />
+            <View style={
+                {
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 50,
+                    marginTop: 10,
+                }
+            }>
+                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={refreshPins}>
+                    <Text style={styles.buttonText}>Refresh</Text>
+                </Pressable>
+                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={handleLogout}>
+                    <Text style={styles.buttonText}>Logout</Text>
+                </Pressable>
+            </View>
         </View>
     );
 }

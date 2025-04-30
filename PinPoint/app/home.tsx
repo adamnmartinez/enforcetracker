@@ -7,6 +7,8 @@ import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
+import * as Location from 'expo-location';
+
 
 export default function Home() {
     const { signOut } = useContext(AuthContext);
@@ -81,11 +83,29 @@ export default function Home() {
 
     // Reference to map to retrieve camera data
     const mapRef = useRef<MapView>(null)
+    // Track user location
+    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
 
     const handleLogout = async () => {
         await signOut();
         router.replace("/login");
     };
+
+    // Track user location on load
+    useEffect(() => {
+        (async () => {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location access is required.');
+                return;
+            }
+            let location = await Location.getCurrentPositionAsync({});
+            setUserLocation({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            });
+        })();
+    }, []);
 
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
@@ -228,6 +248,8 @@ export default function Home() {
                 onLongPress={(event) => {handleMapLongPress(event)}}
                 onMarkerPress={(event) => {handleMarkerClick(event)}}
                 onPress={() => hideAllPopups()}
+                showsUserLocation={true}
+                followsUserLocation={true}
             >
             {markers.map((data, index) => (
                 <Marker 
@@ -303,6 +325,16 @@ export default function Home() {
                     </View>
                 </View>
             }
+            <Button title="Center to My Location" onPress={() => {
+                if (userLocation && mapRef.current) {
+                    mapRef.current.animateCamera({
+                        center: userLocation,
+                        zoom: 15
+                    }, { duration: 750 });
+                } else {
+                    Alert.alert("Location not available");
+                }
+            }} />
             <Button title="Logout" onPress={handleLogout} />
         </View>
     );

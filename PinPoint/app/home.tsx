@@ -35,8 +35,8 @@ export default function Home() {
     const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
-        latitudeDelta: 0.1, 
-        longitudeDelta: 0.1,
+        latitudeDelta: 0.01, 
+        longitudeDelta: 0.01,
     })
 
     // Creator menu dropdown options, "Categories"
@@ -85,6 +85,7 @@ export default function Home() {
     const mapRef = useRef<MapView>(null)
     // Track user location
     const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
 
     const handleLogout = async () => {
         await signOut();
@@ -100,10 +101,17 @@ export default function Home() {
                 return;
             }
             let location = await Location.getCurrentPositionAsync({});
-            setUserLocation({
+            const coords = {
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude
+            };
+            setUserLocation(coords);
+            setMapRegion({
+                ...coords,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002
             });
+            setIsLoadingLocation(false);
         })();
     }, []);
 
@@ -238,105 +246,112 @@ export default function Home() {
     }  
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Welcome to PinPoint!</Text>
-            <MapView 
-                key={markers.length}
-                ref={mapRef}
-                style={styles.map}
-                initialRegion={mapRegion}
-                onLongPress={(event) => {handleMapLongPress(event)}}
-                onMarkerPress={(event) => {handleMarkerClick(event)}}
-                onPress={() => hideAllPopups()}
-                showsUserLocation={true}
-                followsUserLocation={true}
-            >
-            {markers.map((data, index) => (
-                <Marker 
-                    key={index} 
-                    pinColor={getPinColor(data.category)}
-                    onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
-                    coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
-                />
-            ))}
-            </MapView>
-            {showInspector && 
-                <View style={styles.popup}>
-                    <Text style={styles.popupHeader}>Pin Inspection</Text>
-                    <Text style={styles.popupText}>ID: {inspected?.id}</Text>
-                    <Text style={styles.popupText}>Category: {inspected?.category}</Text>
-                    <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
-                    { inspected && endorsed.includes(inspected.id) &&
-                        <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
-                    }
-                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                </View>
-            }
-            {showCreator && 
-                <View style={styles.popup}>
-                    <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                        <TouchableOpacity onPress={() => {
-                            setShowCreator(false);
-                            setShowChoiceMenu(true);
-                        }}
-                        style={{ position: 'absolute', left: 0 }}
-                        >
-                            <Text style={{ fontSize: 24}}>←</Text>
-                        </TouchableOpacity>
-                        <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
-                    </View>
-                    <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                    <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                    <Dropdown
-                        style={styles.dropdown}
-                        placeholderStyle={styles.popupText}
-                        selectedTextStyle={styles.popupText}
-                        inputSearchStyle={styles.popupText}
-                        data={data}
-                        maxHeight={300}
-                        labelField="label"
-                        valueField="value"
-                        placeholder={'Select Category...'}
-                        searchPlaceholder="Search..."
-                        value={pinCategory}
-                        search={false}
-                        onChange={item => {
-                          setPinCategory(item.value);
-                        }}
-                        dropdownPosition="top"
+        <>
+        {isLoadingLocation ? (
+            <View style={styles.container}>
+                <Text style={styles.title}>Loading location...</Text>
+            </View>
+        ) : (
+            <View style={styles.container}>
+                <Text style={styles.title}>Welcome to PinPoint!</Text>
+                <MapView 
+                    key={markers.length}
+                    ref={mapRef}
+                    style={styles.map}
+                    initialRegion={mapRegion}
+                    onLongPress={(event) => {handleMapLongPress(event)}}
+                    onMarkerPress={(event) => {handleMarkerClick(event)}}
+                    onPress={() => hideAllPopups()}
+                    showsUserLocation={true}
+                >
+                {markers.map((data, index) => (
+                    <Marker 
+                        key={index} 
+                        pinColor={getPinColor(data.category)}
+                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                     />
-                    <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
-                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                </View>
-            }
-            {showChoiceMenu &&
-                <View style={styles.popup}>
-                    <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                        <Text style={styles.popupHeader}>What would you like?</Text>
-                        <Button title="Add Pin" onPress={() => {
-                            hideAllPopups()
-                            setShowCreator(true)
-                            }}/>
-                        <Button title="Add Watch Zone" onPress={() => {
-                            hideAllPopups()
-                            Alert.alert("not yet implemented!")
-                            }}/>
+                ))}
+                </MapView>
+                {showInspector && 
+                    <View style={styles.popup}>
+                        <Text style={styles.popupHeader}>Pin Inspection</Text>
+                        <Text style={styles.popupText}>ID: {inspected?.id}</Text>
+                        <Text style={styles.popupText}>Category: {inspected?.category}</Text>
+                        <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
+                        { inspected && endorsed.includes(inspected.id) &&
+                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
+                        }
                         <Button title="Close" onPress={() => {hideAllPopups()}}/>
                     </View>
-                </View>
-            }
-            <Button title="Center to My Location" onPress={() => {
-                if (userLocation && mapRef.current) {
-                    mapRef.current.animateCamera({
-                        center: userLocation,
-                        zoom: 15
-                    }, { duration: 750 });
-                } else {
-                    Alert.alert("Location not available");
                 }
-            }} />
-            <Button title="Logout" onPress={handleLogout} />
-        </View>
+                {showCreator && 
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <TouchableOpacity onPress={() => {
+                                setShowCreator(false);
+                                setShowChoiceMenu(true);
+                            }}
+                            style={{ position: 'absolute', left: 0 }}
+                            >
+                                <Text style={{ fontSize: 24}}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
+                        </View>
+                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Dropdown
+                            style={styles.dropdown}
+                            placeholderStyle={styles.popupText}
+                            selectedTextStyle={styles.popupText}
+                            inputSearchStyle={styles.popupText}
+                            data={data}
+                            maxHeight={300}
+                            labelField="label"
+                            valueField="value"
+                            placeholder={'Select Category...'}
+                            searchPlaceholder="Search..."
+                            value={pinCategory}
+                            search={false}
+                            onChange={item => {
+                              setPinCategory(item.value);
+                            }}
+                            dropdownPosition="top"
+                        />
+                        <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
+                }
+                {showChoiceMenu &&
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <Text style={styles.popupHeader}>What would you like?</Text>
+                            <Button title="Add Pin" onPress={() => {
+                                hideAllPopups()
+                                setShowCreator(true)
+                                }}/>
+                            <Button title="Add Watch Zone" onPress={() => {
+                                hideAllPopups()
+                                Alert.alert("not yet implemented!")
+                                }}/>
+                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        </View>
+                    </View>
+                }
+                <Button title="Center to My Location" onPress={() => {
+                    if (userLocation && mapRef.current) {
+                        mapRef.current.animateCamera({
+                            center: userLocation,
+                            zoom: 15
+                        }, { duration: 750 });
+                    } else {
+                        Alert.alert("Location not available");
+                    }
+                }} />
+                <Button title="Logout" onPress={handleLogout} />
+            </View>
+        )}
+        </>
     );
 }
 

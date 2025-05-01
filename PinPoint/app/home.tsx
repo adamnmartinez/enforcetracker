@@ -17,6 +17,7 @@ export default function Home() {
     
     // States for choice menu (pin or watch zone)
     const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
+    const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
 
     // States for creating a new pin
     const [showCreator, setShowCreator] = useState<Boolean>(false);
@@ -40,13 +41,19 @@ export default function Home() {
     })
 
     // Creator menu dropdown options, "Categories"
-    const data = [
+    const public_category = [
         { label: 'Police', value: 'Police' },
         { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
         { label: 'Parking Enforcement', value: 'Parking Enforcment' },
         { label: 'Robbery', value: 'Robbery' },
         { label: 'Tresspasser', value: 'Tresspassing' },
     ];  
+
+    const private_category = [
+        { label: 'Home', value: 'Home' },
+        { label: 'Car', value: 'Car' },
+        { label: 'General', value: 'General'}
+    ]
 
     // Convert category string to CSS Color for display
     const getPinColor = (category: string) => {
@@ -77,6 +84,7 @@ export default function Home() {
     // Method for hiding windows
     const hideAllPopups = () => {
         setShowInspector(false)
+        setShowWatcherMenu(false)
         setShowCreator(false)
         setShowChoiceMenu(false)
     }
@@ -176,6 +184,11 @@ export default function Home() {
         newPin.validity = newPin.validity + 1
 
         // Hide windows
+        hideAllPopups()
+    }
+
+    const handleNewWatcher = async () => {
+        Alert.alert("Watch Zone Created!", `New watcher at ${pinLocation.longitude}, ${pinLocation.latitude}`)
         hideAllPopups()
     }
 
@@ -305,7 +318,7 @@ export default function Home() {
                             placeholderStyle={styles.popupText}
                             selectedTextStyle={styles.popupText}
                             inputSearchStyle={styles.popupText}
-                            data={data}
+                            data={public_category}
                             maxHeight={300}
                             labelField="label"
                             valueField="value"
@@ -332,10 +345,47 @@ export default function Home() {
                                 }}/>
                             <Button title="Add Watch Zone" onPress={() => {
                                 hideAllPopups()
-                                Alert.alert("not yet implemented!")
+                                setShowWatcherMenu(true)
                                 }}/>
                             <Button title="Close" onPress={() => {hideAllPopups()}}/>
                         </View>
+                    </View>
+                }
+                {showWatcherMenu && 
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <TouchableOpacity onPress={() => {
+                                setShowCreator(false);
+                                setShowChoiceMenu(true);
+                            }}
+                            style={{ position: 'absolute', left: 0 }}
+                            >
+                                <Text style={{ fontSize: 24}}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
+                        </View>
+                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Dropdown
+                            style={styles.dropdown}
+                            placeholderStyle={styles.popupText}
+                            selectedTextStyle={styles.popupText}
+                            inputSearchStyle={styles.popupText}
+                            data={private_category}
+                            maxHeight={300}
+                            labelField="label"
+                            valueField="value"
+                            placeholder={'Select Category...'}
+                            searchPlaceholder="Search..."
+                            value={pinCategory}
+                            search={false}
+                            onChange={item => {
+                              setPinCategory(item.value);
+                            }}
+                            dropdownPosition="top"
+                        />
+                        <Button title="Create Pin" onPress={() => {handleNewWatcher()}}/>
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
                     </View>
                 }
                 <Button title="Center to My Location" onPress={() => {

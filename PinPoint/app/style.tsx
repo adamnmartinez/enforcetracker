@@ -74,19 +74,32 @@ const homeStyle = StyleSheet.create({
     dropdown: {
         padding: 20,   
     },
-    button: {
+    mainButton: {
         display: "flex",
         padding: 10,
-        paddingLeft: 35,
-        paddingRight: 35,
-        // borderWidth: 1,
+        paddingLeft: 40,
+        paddingRight: 40,
+        width: 150,
+        height: 35,
         borderRadius: 25,
+        textAlign: "center",
         backgroundColor: "cornflowerblue",
     },
     pressed: {
         opacity: 0.7,
     },
+    menuButton: {
+        display: "flex",
+        padding: 10,
+        paddingLeft: 35,
+        paddingRight: 35,
+        width: 150,
+        height: 35,
+        borderRadius: 25,
+        backgroundColor: "cornflowerblue",
+    },
     buttonText: {
+        textAlign: "center",
         color: "white"
     }
 });

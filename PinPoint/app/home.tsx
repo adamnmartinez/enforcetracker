@@ -8,7 +8,7 @@ import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Came
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
-
+import { HOST } from "./server";
 
 export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
@@ -139,7 +139,6 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 200) {
-                        Alert.alert(JSON.stringify(data))
                         setUserData({
                             username: data.username, 
                             id: data.id,
@@ -370,6 +369,13 @@ export default function Home() {
             </View>
         ) : (
             <View style={styles.container}>
+                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                    <TouchableOpacity onPress={handleLogout}
+                    style={{ position: 'absolute', right: 150, top: 20 }}
+                    >
+                        <Text style={{ fontSize: 24}}>←</Text>
+                    </TouchableOpacity>
+                </View>
                 <Text style={styles.title}>Welcome to PinPoint!</Text>
                 <MapView 
                     key={markers.length}
@@ -406,7 +412,7 @@ export default function Home() {
                     <View style={styles.popup}>
                         <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
                             <TouchableOpacity onPress={() => {
-                                setShowCreator(false);
+                                hideAllPopups();
                                 setShowChoiceMenu(true);
                             }}
                             style={{ position: 'absolute', left: 0 }}
@@ -435,8 +441,21 @@ export default function Home() {
                             }}
                             dropdownPosition="top"
                         />
-                        <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
-                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        <View style={
+                            {
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                gap: 20,
+                                marginTop: 10,
+                            }
+                        }>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewPin}>
+                                <Text style={styles.buttonText}>Create</Text>
+                            </Pressable>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                <Text style={styles.buttonText}>Close</Text>
+                            </Pressable>
+                        </View>
                     </View>
                 }
                 {showChoiceMenu &&
@@ -459,7 +478,7 @@ export default function Home() {
                     <View style={styles.popup}>
                         <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
                             <TouchableOpacity onPress={() => {
-                                setShowCreator(false);
+                                hideAllPopups()
                                 setShowChoiceMenu(true);
                             }}
                             style={{ position: 'absolute', left: 0 }}
@@ -488,22 +507,35 @@ export default function Home() {
                             }}
                             dropdownPosition="top"
                         />
-                        <Button title="Create Watcher" onPress={() => {handleNewWatcher()}}/>
-                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        <View style={
+                            {
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                gap: 20,
+                                marginTop: 10,
+                            }
+                        }>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
+                                <Text style={styles.buttonText}>Create</Text>
+                            </Pressable>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                <Text style={styles.buttonText}>Close</Text>
+                            </Pressable>
+                        </View>
                     </View>
                 }
                 <View style={
                     {
                         flexDirection: "row",
                         justifyContent: "space-between",
-                        gap: 50,
+                        gap: 30,
                         marginTop: 10,
                     }
                 }>
-                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={refreshPins}>
-                        <Text style={styles.buttonText}>Refresh</Text>
+                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={refreshPins}>
+                        <Text style={styles.buttonText}>Reload</Text>
                     </Pressable>
-                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={() => {
+                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={() => {
                         if (userLocation && mapRef.current) {
                             mapRef.current.animateCamera({
                                 center: userLocation,
@@ -513,10 +545,7 @@ export default function Home() {
                             Alert.alert("Location not available");
                         }
                     }}>
-                        <Text style={styles.buttonText}>Center My Location</Text>
-                    </Pressable>
-                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={handleLogout}>
-                        <Text style={styles.buttonText}>Logout</Text>
+                        <Text style={styles.buttonText}>Center</Text>
                     </Pressable>
                 </View>
             </View>

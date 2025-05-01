@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
+import { TouchableOpacity } from "react-native";
 import { View, Text, Button, Alert, Pressable } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -6,12 +7,17 @@ import { homeStyle } from "./style";
 import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
-import { HOST } from "./server";
+import * as Location from 'expo-location';
+
 
 export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
+    
+    // States for choice menu (pin or watch zone)
+    const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
+    const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
     const [userData, setUserData] = useState<{username: string, id: number}>({
         username: "",
         id: 0,
@@ -34,18 +40,24 @@ export default function Home() {
     const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
-        latitudeDelta: 0.1, 
-        longitudeDelta: 0.1,
+        latitudeDelta: 0.01, 
+        longitudeDelta: 0.01,
     })
 
     // Creator menu dropdown options, "Categories"
-    const data = [
+    const public_category = [
         { label: 'Police', value: 'Police' },
         { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
         { label: 'Parking Enforcement', value: 'Parking Enforcment' },
         { label: 'Robbery', value: 'Robbery' },
         { label: 'Tresspasser', value: 'Tresspassing' },
     ];  
+
+    const private_category = [
+        { label: 'Home', value: 'Home' },
+        { label: 'Car', value: 'Car' },
+        { label: 'General', value: 'General'}
+    ]
 
     // Convert category string to CSS Color for display
     const getPinColor = (category: string) => {
@@ -180,16 +192,44 @@ export default function Home() {
     // Method for hiding windows
     const hideAllPopups = () => {
         setShowInspector(false)
+        setShowWatcherMenu(false)
         setShowCreator(false)
+        setShowChoiceMenu(false)
     }
 
     // Reference to map to retrieve camera data
     const mapRef = useRef<MapView>(null)
+    // Track user location
+    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
 
     const handleLogout = async () => {
         await signOut();
         router.replace("/login");
     };
+
+    // Track user location on load
+    useEffect(() => {
+        (async () => {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location access is required.');
+                return;
+            }
+            let location = await Location.getCurrentPositionAsync({});
+            const coords = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            };
+            setUserLocation(coords);
+            setMapRegion({
+                ...coords,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002
+            });
+            setIsLoadingLocation(false);
+        })();
+    }, []);
 
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
@@ -209,7 +249,7 @@ export default function Home() {
 
         // Set Menus
         hideAllPopups()
-        setShowCreator(true)
+        setShowChoiceMenu(true)
     }
 
     const handleNewPin = async() => {
@@ -249,6 +289,11 @@ export default function Home() {
         // Hide windows
         hideAllPopups()
         refreshPins()
+    }
+
+    const handleNewWatcher = async () => {
+        Alert.alert("Watch Zone Created!", `New watcher at ${pinLocation.longitude}, ${pinLocation.latitude}`)
+        hideAllPopups()
     }
 
     const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
@@ -318,81 +363,165 @@ export default function Home() {
     }  
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Welcome to PinPoint!</Text>
-            <MapView 
-                key={markers.length}
-                ref={mapRef}
-                style={styles.map}
-                initialRegion={mapRegion}
-                onLongPress={(event) => {handleMapLongPress(event)}}
-                onMarkerPress={(event) => {handleMarkerClick(event)}}
-                onPress={() => hideAllPopups()}
-            >
-            {markers.map((data, index) => (
-                <Marker 
-                    key={index} 
-                    pinColor={getPinColor(data.category)}
-                    onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
-                    coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
-                />
-            ))}
-            </MapView>
-            {showInspector && 
-                <View style={styles.popup}>
-                    <Text style={styles.popupHeader}>Pin Inspection</Text>
-                    <Text style={styles.popupText}>ID: {inspected?.id}</Text>
-                    <Text style={styles.popupText}>Category: {inspected?.category}</Text>
-                    <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
-                    { inspected && endorsed.includes(inspected.id) &&
-                        <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
-                    }
-                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                </View>
-            }
-            {showCreator && 
-                <View style={styles.popup}>
-                    <Text style={styles.popupHeader}>Create a Pin</Text>
-                    <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                    <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                    <Dropdown
-                        style={styles.dropdown}
-                        placeholderStyle={styles.popupText}
-                        selectedTextStyle={styles.popupText}
-                        inputSearchStyle={styles.popupText}
-                        data={data}
-                        maxHeight={300}
-                        labelField="label"
-                        valueField="value"
-                        placeholder={'Select Category...'}
-                        searchPlaceholder="Search..."
-                        value={pinCategory}
-                        search={false}
-                        onChange={item => {
-                          setPinCategory(item.value);
-                        }}
-                        dropdownPosition="top"
-                    />
-                    <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
-                    <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                </View>
-            }
-            <View style={
-                {
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    gap: 50,
-                    marginTop: 10,
-                }
-            }>
-                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={refreshPins}>
-                    <Text style={styles.buttonText}>Refresh</Text>
-                </Pressable>
-                <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={handleLogout}>
-                    <Text style={styles.buttonText}>Logout</Text>
-                </Pressable>
+        <>
+        {isLoadingLocation ? (
+            <View style={styles.container}>
+                <Text style={styles.title}>Loading location...</Text>
             </View>
-        </View>
+        ) : (
+            <View style={styles.container}>
+                <Text style={styles.title}>Welcome to PinPoint!</Text>
+                <MapView 
+                    key={markers.length}
+                    ref={mapRef}
+                    style={styles.map}
+                    initialRegion={mapRegion}
+                    onLongPress={(event) => {handleMapLongPress(event)}}
+                    onMarkerPress={(event) => {handleMarkerClick(event)}}
+                    onPress={() => hideAllPopups()}
+                    showsUserLocation={true}
+                >
+                {markers.map((data, index) => (
+                    <Marker 
+                        key={index} 
+                        pinColor={getPinColor(data.category)}
+                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+                    />
+                ))}
+                </MapView>
+                {showInspector && 
+                    <View style={styles.popup}>
+                        <Text style={styles.popupHeader}>Pin Inspection</Text>
+                        <Text style={styles.popupText}>ID: {inspected?.id}</Text>
+                        <Text style={styles.popupText}>Category: {inspected?.category}</Text>
+                        <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
+                        { inspected && endorsed.includes(inspected.id) &&
+                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
+                        }
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
+                }
+                {showCreator && 
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <TouchableOpacity onPress={() => {
+                                setShowCreator(false);
+                                setShowChoiceMenu(true);
+                            }}
+                            style={{ position: 'absolute', left: 0 }}
+                            >
+                                <Text style={{ fontSize: 24}}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
+                        </View>
+                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Dropdown
+                            style={styles.dropdown}
+                            placeholderStyle={styles.popupText}
+                            selectedTextStyle={styles.popupText}
+                            inputSearchStyle={styles.popupText}
+                            data={public_category}
+                            maxHeight={300}
+                            labelField="label"
+                            valueField="value"
+                            placeholder={'Select Category...'}
+                            searchPlaceholder="Search..."
+                            value={pinCategory}
+                            search={false}
+                            onChange={item => {
+                              setPinCategory(item.value);
+                            }}
+                            dropdownPosition="top"
+                        />
+                        <Button title="Create Pin" onPress={() => {handleNewPin()}}/>
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
+                }
+                {showChoiceMenu &&
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <Text style={styles.popupHeader}>What would you like?</Text>
+                            <Button title="Add Pin" onPress={() => {
+                                hideAllPopups()
+                                setShowCreator(true)
+                                }}/>
+                            <Button title="Add Watch Zone" onPress={() => {
+                                hideAllPopups()
+                                setShowWatcherMenu(true)
+                                }}/>
+                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        </View>
+                    </View>
+                }
+                {showWatcherMenu && 
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <TouchableOpacity onPress={() => {
+                                setShowCreator(false);
+                                setShowChoiceMenu(true);
+                            }}
+                            style={{ position: 'absolute', left: 0 }}
+                            >
+                                <Text style={{ fontSize: 24}}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
+                        </View>
+                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Dropdown
+                            style={styles.dropdown}
+                            placeholderStyle={styles.popupText}
+                            selectedTextStyle={styles.popupText}
+                            inputSearchStyle={styles.popupText}
+                            data={private_category}
+                            maxHeight={300}
+                            labelField="label"
+                            valueField="value"
+                            placeholder={'Select Category...'}
+                            searchPlaceholder="Search..."
+                            value={pinCategory}
+                            search={false}
+                            onChange={item => {
+                              setPinCategory(item.value);
+                            }}
+                            dropdownPosition="top"
+                        />
+                        <Button title="Create Watcher" onPress={() => {handleNewWatcher()}}/>
+                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
+                }
+                <View style={
+                    {
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        gap: 50,
+                        marginTop: 10,
+                    }
+                }>
+                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={refreshPins}>
+                        <Text style={styles.buttonText}>Refresh</Text>
+                    </Pressable>
+                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={() => {
+                        if (userLocation && mapRef.current) {
+                            mapRef.current.animateCamera({
+                                center: userLocation,
+                                zoom: 15
+                            }, { duration: 750 });
+                        } else {
+                            Alert.alert("Location not available");
+                        }
+                    }}>
+                        <Text style={styles.buttonText}>Center My Location</Text>
+                    </Pressable>
+                    <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={handleLogout}>
+                        <Text style={styles.buttonText}>Logout</Text>
+                    </Pressable>
+                </View>
+            </View>
+        )}
+        </>
     );
 }
 

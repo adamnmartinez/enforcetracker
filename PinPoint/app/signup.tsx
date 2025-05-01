@@ -26,6 +26,10 @@ export default function Signup() {
             if (response.status == 201) {
                 await signUp(data.token);
                 router.replace("/home");
+            } else if (response.status == 400) {
+                Alert.alert("Signup Failed", data.message || "You must fill in all fields.");
+            } else if (response.status == 409) {
+                Alert.alert("Signup Failed", data.message || "A user with that name already exists.");
             } else {
                 Alert.alert("Signup Failed", data.message || "Error creating account");
             }

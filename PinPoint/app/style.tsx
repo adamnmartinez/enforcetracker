@@ -72,8 +72,22 @@ const homeStyle = StyleSheet.create({
         color: "red",
     },
     dropdown: {
-        padding: 20,
-        
+        padding: 20,   
+    },
+    button: {
+        display: "flex",
+        padding: 10,
+        paddingLeft: 35,
+        paddingRight: 35,
+        // borderWidth: 1,
+        borderRadius: 25,
+        backgroundColor: "cornflowerblue",
+    },
+    pressed: {
+        opacity: 0.7,
+    },
+    buttonText: {
+        color: "white"
     }
 });
 

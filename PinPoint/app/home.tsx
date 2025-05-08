@@ -253,6 +253,8 @@ export default function Home() {
 
     const handleNewPin = async() => {
         // Create new pin object and assign ID
+        Alert.alert("Created New Pin")
+
         if (pinCategory == "") {
             Alert.alert("Error", "Please select a category")
             return

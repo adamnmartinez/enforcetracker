@@ -14,19 +14,27 @@ export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
+    const [watchZones, setWatchZones] = useState<Pin[]>([]);
+    
     
     // States for choice menu (pin or watch zone)
     const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
     const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
-    const [userData, setUserData] = useState<{username: string, id: number}>({
+    const [userData, setUserData] = useState<{username: string, id: string}>({
         username: "",
-        id: 0,
+        id: "",
     })
 
     // States for creating a new pin
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
     const [pinLocation, setPinLocation] = useState<{ latitude: number, longitude: number}>({
+        latitude: 0,
+        longitude: 0,
+    })
+
+    const [watcherCategory, setWatcherCategory] = useState<string>("")
+    const [watcherLocation, setWatcherLocation] = useState<{ latitude: number, longitude: number}>({
         latitude: 0,
         longitude: 0,
     })
@@ -84,7 +92,6 @@ export default function Home() {
 
     // Fetch Pins from DB
     const fetchPins = () => {
-        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
         try {
             fetch(HOST + "/api/fetchpins", {
                 method: "GET",
@@ -105,9 +112,7 @@ export default function Home() {
                                 data.pins[i].pid
                             )]
                         }
-                        //Alert.alert("DEBUG", "Got Pins, Updating...")
                         setMarkers(serverPins)
-                        //Alert.alert("DEBUG", `${JSON.stringify(markers)}`)
                     } else {
                         Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
                     }
@@ -119,12 +124,50 @@ export default function Home() {
         
     }
 
+    const fetchWatchers = () => {
+        try {
+            fetch(HOST + "/api/fetchwatchers", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    uid: userData.id 
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        let serverWatchers: Pin[] = []
+                        for (let i = 0; i < data.pins.length; i++) {
+                            serverWatchers = [...serverWatchers, new Pin (
+                                {
+                                    latitude: data.pins[i].latitude,
+                                    longitude: data.pins[i].longitude,
+                                },
+                                data.pins[i].category,
+                                data.pins[i].pid
+                            )]
+                        }
+                        setWatchZones(serverWatchers)
+                    } else {
+                        Alert.alert("Watcher Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured populating the user map...(500)")
+        }
+        
+    }
+
     const refreshPins = () => { 
         fetchPins() 
+        fetchWatchers()
     }
 
     useEffect(() => {
         fetchPins()
+        fetchWatchers()
         fetchUserData()
     }, [])
 
@@ -154,10 +197,7 @@ export default function Home() {
     }
 
     // Fetch Pins from DB
-    const uploadPin = (category: string, coordinates: LatLng, author: number) => {
-        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
-        //Alert.alert("Token", SecureStore.getItem("token") || "No token")
-
+    const uploadPin = (category: string, coordinates: LatLng, author: string) => {
         try {
             fetch(HOST + "/api/pushpin", {
                 method: "POST",
@@ -176,6 +216,34 @@ export default function Home() {
                         fetchPins()
                     } else {
                         Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", e?.toString())
+        }
+        
+    }
+
+    const uploadWatcher = (category: string, coordinates: LatLng, author: string) => {
+        try {
+            fetch(HOST + "/api/pushwatcher", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    category: category,
+                    longitude: coordinates.longitude,
+                    latitude: coordinates.latitude,
+                    author_id: author,
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 201) {
+                        fetchWatchers()
+                    } else {
+                        Alert.alert("Watcher Upload Error", "We ran into an error with the server (500)")
                     }
                 })
             })
@@ -234,6 +302,7 @@ export default function Home() {
         // Set new pin location
         const mapPoint = event.nativeEvent.coordinate
         setPinLocation(mapPoint)
+        setWatcherLocation(mapPoint)
 
         // Animate camera movement
         mapRef.current?.getCamera().then((cam) => {
@@ -253,8 +322,6 @@ export default function Home() {
 
     const handleNewPin = async() => {
         // Create new pin object and assign ID
-        Alert.alert("Created New Pin")
-
         if (pinCategory == "") {
             Alert.alert("Error", "Please select a category")
             return
@@ -293,8 +360,38 @@ export default function Home() {
     }
 
     const handleNewWatcher = async () => {
-        Alert.alert("Watch Zone Created!", `New watcher at ${pinLocation.longitude}, ${pinLocation.latitude}`)
+        if (watcherCategory == "") {
+            Alert.alert("Error", "Please select a category")
+            return
+        } else if (userData.id == "") {
+            Alert.alert("Error", "Could not find user, please reauthenticate and try again.")
+            return
+        }
+
+        setMapRegion({
+            latitude: watcherLocation.latitude,
+            longitude: watcherLocation.longitude,
+            latitudeDelta: 0.1,
+            longitudeDelta: 0.1,
+        })
+
+        mapRef.current?.getCamera().then((cam) => {
+            mapRef.current?.animateCamera({
+                center: watcherLocation,
+                heading: cam.heading,
+                pitch: 0,
+                zoom: cam.zoom,
+                altitude: cam.altitude
+            }, { duration: 750 })
+        })
+
+
+        Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
+
+        uploadWatcher(watcherCategory, watcherLocation, userData.id)
+
         hideAllPopups()
+        refreshPins()
     }
 
     const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
@@ -380,7 +477,7 @@ export default function Home() {
                 </View>
                 <Text style={styles.title}>Welcome to PinPoint!</Text>
                 <MapView 
-                    key={markers.length}
+                    key={markers.length + watchZones.length}
                     ref={mapRef}
                     style={styles.map}
                     initialRegion={mapRegion}
@@ -397,6 +494,14 @@ export default function Home() {
                         coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                     />
                 ))}
+                {watchZones.map((data, index) => (
+                    <Marker 
+                        key={index} 
+                        // pinColor={getPinColor(data.category)}
+                        // onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+                    />
+                ))}
                 </MapView>
                 {showInspector && 
                     <View style={styles.popup}>
@@ -408,6 +513,22 @@ export default function Home() {
                             <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
                         }
                         <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                    </View>
+                }
+                {showChoiceMenu &&
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <Text style={styles.popupHeader}>What would you like?</Text>
+                            <Button title="Add Pin" onPress={() => {
+                                hideAllPopups()
+                                setShowCreator(true)
+                                }}/>
+                            <Button title="Add Watch Zone" onPress={() => {
+                                hideAllPopups()
+                                setShowWatcherMenu(true)
+                                }}/>
+                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        </View>
                     </View>
                 }
                 {showCreator && 
@@ -460,22 +581,6 @@ export default function Home() {
                         </View>
                     </View>
                 }
-                {showChoiceMenu &&
-                    <View style={styles.popup}>
-                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                            <Text style={styles.popupHeader}>What would you like?</Text>
-                            <Button title="Add Pin" onPress={() => {
-                                hideAllPopups()
-                                setShowCreator(true)
-                                }}/>
-                            <Button title="Add Watch Zone" onPress={() => {
-                                hideAllPopups()
-                                setShowWatcherMenu(true)
-                                }}/>
-                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                        </View>
-                    </View>
-                }
                 {showWatcherMenu && 
                     <View style={styles.popup}>
                         <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
@@ -489,8 +594,8 @@ export default function Home() {
                             </TouchableOpacity>
                             <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
                         </View>
-                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Text style={styles.popupText}>{watcherLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{watcherLocation.longitude}, </Text>
                         <Dropdown
                             style={styles.dropdown}
                             placeholderStyle={styles.popupText}
@@ -502,10 +607,10 @@ export default function Home() {
                             valueField="value"
                             placeholder={'Select Category...'}
                             searchPlaceholder="Search..."
-                            value={pinCategory}
+                            value={watcherCategory}
                             search={false}
                             onChange={item => {
-                              setPinCategory(item.value);
+                              setWatcherCategory(item.value);
                             }}
                             dropdownPosition="top"
                         />

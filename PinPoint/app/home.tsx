@@ -1,10 +1,12 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { TouchableOpacity } from "react-native";
 import { View, Text, Button, Alert, Pressable } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
-import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
+import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera, Circle } from "react-native-maps"
+import Slider from '@react-native-community/slider';
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
@@ -40,6 +42,8 @@ export default function Home() {
         longitude: 0,
     })
 
+    const [watcherRadius, setWatcherRadius] = useState<number>(100);
+
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
     const [inspected, setInspected] = useState<{pin: Pin, isWatcher: Boolean}>()
@@ -52,6 +56,8 @@ export default function Home() {
         latitudeDelta: 0.01, 
         longitudeDelta: 0.01,
     })
+    // Track the initial region after loading user location
+    const [initialRegion, setInitialRegion] = useState<Region | null>(null);
 
     // Creator menu dropdown options, "Categories"
     const public_category = [
@@ -313,11 +319,14 @@ export default function Home() {
                 longitude: location.coords.longitude
             };
             setUserLocation(coords);
-            setMapRegion({
-                ...coords,
+            const loadedRegion = {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
                 latitudeDelta: 0.002,
-                longitudeDelta: 0.002
-            });
+                longitudeDelta: 0.002,
+            };
+            setMapRegion(loadedRegion);
+            setInitialRegion(loadedRegion);
             setIsLoadingLocation(false);
         })();
     }, []);
@@ -354,24 +363,15 @@ export default function Home() {
         const newPin = new Pin(pinLocation, pinCategory, IDTracker.toString())
         setIDTracker((prev) => prev + 1)
 
-        // Map will be re-rendered on pin creation.
-        // Mirror user's map and camera setup at time of creation
-        setMapRegion({
+        // Animate map to pin location using animateToRegion for smooth pan+zoom
+        const newRegion = {
             latitude: pinLocation.latitude,
             longitude: pinLocation.longitude,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-        })
-
-        mapRef.current?.getCamera().then((cam) => {
-            mapRef.current?.animateCamera({
-                center: pinLocation,
-                heading: cam.heading,
-                pitch: 0,
-                zoom: cam.zoom,
-                altitude: cam.altitude
-            }, { duration: 750 })
-        })
+            latitudeDelta: mapRegion.latitudeDelta,
+            longitudeDelta: mapRegion.longitudeDelta,
+        };
+        mapRef.current?.animateToRegion(newRegion, 1500);
+        setMapRegion(newRegion);
 
         uploadPin(pinCategory, pinLocation, userData.id)
 
@@ -392,23 +392,15 @@ export default function Home() {
             return
         }
 
-        setMapRegion({
+        // Animate map to watcher location using animateToRegion for smooth pan+zoom
+        const newRegion = {
             latitude: watcherLocation.latitude,
             longitude: watcherLocation.longitude,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-        })
-
-        mapRef.current?.getCamera().then((cam) => {
-            mapRef.current?.animateCamera({
-                center: watcherLocation,
-                heading: cam.heading,
-                pitch: 0,
-                zoom: cam.zoom,
-                altitude: cam.altitude
-            }, { duration: 750 })
-        })
-
+            latitudeDelta: mapRegion.latitudeDelta,
+            longitudeDelta: mapRegion.longitudeDelta,
+        };
+        mapRef.current?.animateToRegion(newRegion, 1500);
+        setMapRegion(newRegion);
 
         Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
 
@@ -440,7 +432,7 @@ export default function Home() {
                 pitch: 0,
                 zoom: cam.zoom,
                 altitude: cam.altitude
-            }, { duration: 750 })
+            }, { duration: 1500 })
         })
 
         hideAllPopups()
@@ -507,41 +499,83 @@ export default function Home() {
             </View>
         ) : (
             <View style={styles.container}>
-                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 35 , paddingTop: 35 }}>
                     <TouchableOpacity onPress={handleLogout}
-                    style={{ position: 'absolute', right: 150, top: 20 }}
+                    style={{ position: 'absolute', right: 160, top: 70 }}
                     >
                         <Text style={{ fontSize: 24}}>←</Text>
                     </TouchableOpacity>
                 </View>
                 <Text style={styles.title}>Welcome to PinPoint!</Text>
-                <MapView 
-                    key={markers.length + watchZones.length}
-                    ref={mapRef}
-                    style={styles.map}
-                    initialRegion={mapRegion}
-                    onLongPress={(event) => {handleMapLongPress(event)}}
-                    onMarkerPress={(event) => {handleMarkerClick(event)}}
-                    onPress={() => hideAllPopups()}
-                    showsUserLocation={true}
-                >
-                {markers.map((data, index) => (
-                    <Marker 
-                        key={index} 
-                        pinColor={getPinColor(data.category)}
-                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, false)}} 
-                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
-                    />
-                ))}
-                {watchZones.map((data, index) => (
-                    <Marker 
-                        key={index} 
-                        // pinColor={getPinColor(data.category)}
-                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, true)}} 
-                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
-                    />
-                ))}
-                </MapView>
+                <View style={{ flex: 1 }}>
+                  <MapView 
+                      ref={mapRef}
+                      style={styles.map}
+                      region={mapRegion}
+                      onRegionChangeComplete={(region) => setMapRegion(region)}
+                      onLongPress={(event) => {handleMapLongPress(event)}}
+                      onMarkerPress={(event) => {handleMarkerClick(event)}}
+                      onPress={() => hideAllPopups()}
+                      showsUserLocation={true}
+                  >
+                  {(showChoiceMenu || showCreator || showWatcherMenu) && (
+                      <Marker
+                          key="preview-pin"
+                          coordinate={pinLocation}
+                          pinColor="gray"
+                      />
+                  )}
+
+                  {showWatcherMenu && (
+                      <Circle
+                          key="preview-circle"
+                          center={pinLocation}
+                          radius={watcherRadius}
+                          strokeColor="rgba(0, 0, 255, 0.5)"
+                          fillColor="rgba(0, 0, 255, 0.2)"
+                      />
+                  )}
+
+                  {markers.map((data, index) => (
+                      <Marker 
+                          key={index} 
+                          pinColor={getPinColor(data.category)}
+                          onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, false)}} 
+                          coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+                      />
+                  ))}
+                  {watchZones.map((data, index) => (
+                      <Marker 
+                          key={index} 
+                          // pinColor={getPinColor(data.category)}
+                          onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, true)}} 
+                          coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+                      />
+                  ))}
+                  </MapView>
+                  <Pressable
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      backgroundColor: 'white',
+                      padding: 8,
+                      borderRadius: 20,
+                      elevation: 4,
+                      zIndex: 1000,
+                    }}
+                    onPress={() => {
+                      if (initialRegion) {
+                        mapRef.current?.animateToRegion(initialRegion, 1000);
+                        setMapRegion(initialRegion);
+                      } else {
+                        Alert.alert("Still loading initial view");
+                      }
+                    }}
+                  >
+                    <Ionicons name="locate" size={24} color="black" />
+                  </Pressable>
+                </View>
                 {showInspector && 
                     <View style={styles.popup}>
                         <Text style={styles.popupHeader}>{ inspected?.isWatcher ? "Watch Zone" : "Report"}</Text>
@@ -656,6 +690,17 @@ export default function Home() {
                             }}
                             dropdownPosition="top"
                         />
+                                                <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                            <Text style={styles.popupText}>Radius: {watcherRadius} meters</Text>
+                            <Slider
+                                style={{ width: 250, height: 40 }}
+                                minimumValue={5}
+                                maximumValue={100}
+                                step={5}
+                                value={watcherRadius}
+                                onValueChange={(value) => setWatcherRadius(value)}
+                            />
+                        </View>
                         <View style={
                             {
                                 flexDirection: "row",
@@ -673,28 +718,16 @@ export default function Home() {
                         </View>
                     </View>
                 }
-                <View style={
-                    {
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        gap: 30,
-                        marginTop: 10,
-                    }
-                }>
+                <View style={{
+                    position: 'absolute',
+                    bottom: 20,
+                    left: 0,
+                    right: 0,
+                    alignItems: 'center',
+                    paddingVertical: 25,
+                }}>
                     <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={refreshPins}>
                         <Text style={styles.buttonText}>Reload</Text>
-                    </Pressable>
-                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={() => {
-                        if (userLocation && mapRef.current) {
-                            mapRef.current.animateCamera({
-                                center: userLocation,
-                                zoom: 15
-                            }, { duration: 750 });
-                        } else {
-                            Alert.alert("Location not available");
-                        }
-                    }}>
-                        <Text style={styles.buttonText}>Center</Text>
                     </Pressable>
                 </View>
             </View>

@@ -9,6 +9,7 @@ import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
 import { HOST } from "./server";
+import { hide } from "expo-router/build/utils/splash";
 
 export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
@@ -41,7 +42,7 @@ export default function Home() {
 
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
-    const [inspected, setInspected] = useState<Pin>()
+    const [inspected, setInspected] = useState<{pin: Pin, isWatcher: Boolean}>()
     const [endorsed, setEndorsed] = useState<string[]>([])
 
     // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
@@ -63,6 +64,7 @@ export default function Home() {
 
     const private_category = [
         { label: 'Home', value: 'Home' },
+        { label: 'Work', value: 'Work' },
         { label: 'Car', value: 'Car' },
         { label: 'General', value: 'General'}
     ]
@@ -222,7 +224,6 @@ export default function Home() {
         } catch (e) {
             Alert.alert("Error", e?.toString())
         }
-        
     }
 
     const uploadWatcher = (category: string, coordinates: LatLng, author: string) => {
@@ -249,8 +250,31 @@ export default function Home() {
             })
         } catch (e) {
             Alert.alert("Error", e?.toString())
+        }   
+    }
+
+    const removeWatcher = async (pin_id: string) => {
+        try {
+            fetch(HOST + "/api/deletewatcher", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    pid: pin_id
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        fetchWatchers()
+                    } else {
+                        Alert.alert("Watcher Delete Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", e?.toString())
         }
-        
     }
 
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
@@ -394,12 +418,15 @@ export default function Home() {
         refreshPins()
     }
 
-    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
-        setInspected({
-            id: id,
-            coordinates: coordinates,
-            category: category,
-            validity: validity
+    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number, isWatcher: Boolean) => {
+        setInspected({ 
+            pin: {
+                id: id,
+                coordinates: coordinates,
+                category: category,
+                validity: validity
+            },
+            isWatcher: isWatcher
         })
     }
 
@@ -417,7 +444,19 @@ export default function Home() {
         })
 
         hideAllPopups()
+
         setShowInspector(true)
+        
+    }
+
+    const handleDeleteWatcher = async (pin_id: string | undefined) => {
+        if (pin_id == undefined){
+            Alert.alert("Could not delete", "Pin ID is undefined.")
+            return
+        }
+        removeWatcher(pin_id)
+        hideAllPopups()
+        refreshPins()
     }
 
     const handleValidate = async (pin_id: string) => {
@@ -431,7 +470,7 @@ export default function Home() {
 
                 if (marker) {
                     marker.validity = marker.validity + 1
-                    setInspected(marker)
+                    setInspected({pin: marker, isWatcher: false})
                 }
                 
             } else {
@@ -451,7 +490,7 @@ export default function Home() {
 
                 if (marker) {
                     marker.validity = marker.validity - 1
-                    setInspected(marker)
+                    setInspected({pin: marker, isWatcher: false})
                 }
                 
             } else {
@@ -490,7 +529,7 @@ export default function Home() {
                     <Marker 
                         key={index} 
                         pinColor={getPinColor(data.category)}
-                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, false)}} 
                         coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                     />
                 ))}
@@ -498,19 +537,22 @@ export default function Home() {
                     <Marker 
                         key={index} 
                         // pinColor={getPinColor(data.category)}
-                        // onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, true)}} 
                         coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                     />
                 ))}
                 </MapView>
                 {showInspector && 
                     <View style={styles.popup}>
-                        <Text style={styles.popupHeader}>Pin Inspection</Text>
-                        <Text style={styles.popupText}>ID: {inspected?.id}</Text>
-                        <Text style={styles.popupText}>Category: {inspected?.category}</Text>
-                        <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
-                        { inspected && endorsed.includes(inspected.id) &&
-                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
+                        <Text style={styles.popupHeader}>{ inspected?.isWatcher ? "Watch Zone" : "Report"}</Text>
+                        <Text style={styles.popupText}>ID: {inspected?.pin.id}</Text>
+                        <Text style={styles.popupText}>Category: {inspected?.pin.category}</Text>
+                        { inspected?.isWatcher ? 
+                            <Button title={`Delete Zone`} onPress={() => {handleDeleteWatcher(inspected?.pin.id)}}></Button> :
+                            <Button title={`Confirmations ${inspected?.pin.validity}`} onPress={() => {handleValidate(inspected?.pin.id || "")}}></Button>
+                        }
+                        { inspected && endorsed.includes(inspected.pin.id) &&
+                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.pin.id)}}></Button>
                         }
                         <Button title="Close" onPress={() => {hideAllPopups()}}/>
                     </View>

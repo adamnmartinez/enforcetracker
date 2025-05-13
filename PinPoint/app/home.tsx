@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { TouchableOpacity } from "react-native";
-import { View, Text, Button, Alert, Pressable } from "react-native";
+import { View, Text, Button, ScrollView, Alert, Pressable } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -11,7 +11,6 @@ import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
 import { HOST } from "./server";
-import { hide } from "expo-router/build/utils/splash";
 
 export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
@@ -499,7 +498,7 @@ export default function Home() {
             </View>
         ) : (
             <View style={styles.container}>
-                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 35 , paddingTop: 35 }}>
+                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 35 , paddingTop: 10, bottom: 25, left: 5 }}>
                     <TouchableOpacity onPress={handleLogout}
                     style={{ position: 'absolute', right: 160, top: 70 }}
                     >
@@ -670,57 +669,62 @@ export default function Home() {
                             </TouchableOpacity>
                             <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
                         </View>
-                        <Text style={styles.popupText}>{watcherLocation.latitude}, </Text>
-                        <Text style={styles.popupText}>{watcherLocation.longitude}, </Text>
-                        <Dropdown
-                            style={styles.dropdown}
-                            placeholderStyle={styles.popupText}
-                            selectedTextStyle={styles.popupText}
-                            inputSearchStyle={styles.popupText}
-                            data={private_category}
-                            maxHeight={300}
-                            labelField="label"
-                            valueField="value"
-                            placeholder={'Select Category...'}
-                            searchPlaceholder="Search..."
-                            value={watcherCategory}
-                            search={false}
-                            onChange={item => {
-                              setWatcherCategory(item.value);
-                            }}
-                            dropdownPosition="top"
-                        />
-                                                <View style={{ alignItems: 'center', marginVertical: 10 }}>
-                            <Text style={styles.popupText}>Radius: {watcherRadius} meters</Text>
-                            <Slider
-                                style={{ width: 250, height: 40 }}
-                                minimumValue={5}
-                                maximumValue={100}
-                                step={5}
-                                value={watcherRadius}
-                                onValueChange={(value) => setWatcherRadius(value)}
-                            />
-                        </View>
-                        <View style={
-                            {
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                                gap: 20,
-                                marginTop: 10,
-                            }
-                        }>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
-                                <Text style={styles.buttonText}>Create</Text>
-                            </Pressable>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
-                                <Text style={styles.buttonText}>Close</Text>
-                            </Pressable>
-                        </View>
+                        <ScrollView style={{flex: 1}}>
+                            <View style={{height: 650}}>
+                                <Text style={styles.popupText}>{watcherLocation.latitude}, </Text>
+                                <Text style={styles.popupText}>{watcherLocation.longitude}, </Text>
+                                <Dropdown
+                                    style={styles.dropdown}
+                                    placeholderStyle={styles.popupText}
+                                    selectedTextStyle={styles.popupText}
+                                    inputSearchStyle={styles.popupText}
+                                    data={private_category}
+                                    maxHeight={300}
+                                    labelField="label"
+                                    valueField="value"
+                                    placeholder={'Select Category...'}
+                                    searchPlaceholder="Search..."
+                                    value={watcherCategory}
+                                    search={false}
+                                    onChange={item => {
+                                    setWatcherCategory(item.value);
+                                    }}
+                                    dropdownPosition="top"
+                                />
+                                <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                                    <Text style={styles.popupText}>Radius: {watcherRadius} meters</Text>
+                                    <Slider
+                                        style={{ width: 250, height: 40 }}
+                                        minimumValue={5}
+                                        maximumValue={100}
+                                        step={5}
+                                        value={watcherRadius}
+                                        onValueChange={(value: number) => setWatcherRadius(value)}
+                                    />
+                                </View>
+                                <View style={
+                                    {
+                                        flexDirection: "row",
+                                        justifyContent: "space-between",
+                                        gap: 20,
+                                        marginTop: 10,
+                                    }
+                                }>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
+                                        <Text style={styles.buttonText}>Create</Text>
+                                    </Pressable>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                        <Text style={styles.buttonText}>Close</Text>
+                                    </Pressable>
+                                </View>
+                            </View>
+                        </ScrollView>
+                        
                     </View>
                 }
                 <View style={{
                     position: 'absolute',
-                    bottom: 20,
+                    top: 590,
                     left: 0,
                     right: 0,
                     alignItems: 'center',

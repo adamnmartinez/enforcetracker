@@ -179,12 +179,14 @@ export default function Home() {
     }, [])
 
     const fetchUserData = async () => {
+        if (!userToken) Alert.alert("NO TOKEN DETECTED")
+
         try {
             fetch(HOST + "/api/me", {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    "authorization": userToken || "",
+                    "authorization": userToken ? userToken : "No Token",
                 }
             }).then((response) => {
                 response.json().then((data) => {
@@ -220,7 +222,7 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 201) {
-                        fetchPins()
+                        Alert.alert("Pin Created!")
                     } else {
                         Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
                     }
@@ -228,10 +230,12 @@ export default function Home() {
             })
         } catch (e) {
             Alert.alert("Error", e?.toString())
+        } finally {
+            fetchPins()
         }
     }
 
-    const uploadWatcher = (category: string, coordinates: LatLng, author: string) => {
+    const uploadWatcher = (category: string, coordinates: LatLng, author: string, radius: number) => {
         try {
             fetch(HOST + "/api/pushwatcher", {
                 method: "POST",
@@ -243,6 +247,7 @@ export default function Home() {
                     longitude: coordinates.longitude,
                     latitude: coordinates.latitude,
                     author_id: author,
+                    radius: radius,
                 })
             }).then((response) => {
                 response.json().then((data) => {
@@ -372,14 +377,18 @@ export default function Home() {
         mapRef.current?.animateToRegion(newRegion, 1500);
         setMapRegion(newRegion);
 
-        uploadPin(pinCategory, pinLocation, userData.id)
-
-        setEndorsed((prev) => [...prev, newPin.id])
-        newPin.validity = newPin.validity + 1
-
+        try {
+            uploadPin(pinCategory, pinLocation, userData.id)
+        } catch (e) {
+            Alert.alert("An error occured handling a new pin upload.")
+        }  finally {
+            setEndorsed((prev) => [...prev, newPin.id])
+            newPin.validity = newPin.validity + 1
+            hideAllPopups()
+            refreshPins()
+        }
         // Hide windows
-        hideAllPopups()
-        refreshPins()
+        
     }
 
     const handleNewWatcher = async () => {
@@ -403,7 +412,7 @@ export default function Home() {
 
         Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
 
-        uploadWatcher(watcherCategory, watcherLocation, userData.id)
+        uploadWatcher(watcherCategory, watcherLocation, userData.id, watcherRadius)
 
         hideAllPopups()
         refreshPins()
@@ -505,7 +514,7 @@ export default function Home() {
                         <Text style={{ fontSize: 24}}>←</Text>
                     </TouchableOpacity>
                 </View>
-                <Text style={styles.title}>Welcome to PinPoint!</Text>
+                <Text style={styles.title}>Welcome, {userData.username}!</Text>
                 <View style={{ flex: 1 }}>
                   <MapView 
                       ref={mapRef}

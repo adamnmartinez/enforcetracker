@@ -17,8 +17,11 @@ export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
-    const [watchZones, setWatchZones] = useState<Pin[]>([]);
+    const [watchZones, setWatchZones] = useState<{ id: string, coordinates: LatLng, category: string, radius: number }[]>([]);
+    // State to track which zone is selected for viewing radius
+    const [selectedZone, setSelectedZone] = useState<{ coordinates: LatLng; radius: number } | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [showWatchZonesMenu, setShowWatchZonesMenu] = useState(true);
     
     // Animated value for slide-over menu
     const menuWidth = 250;
@@ -26,6 +29,12 @@ export default function Home() {
     const [menuOpen, setMenuOpen] = useState(false);
 
     const toggleMenu = () => {
+      // Hide any open popups before toggling slide-over menu
+      setShowInspector(false);
+      setShowWatcherMenu(false);
+      setShowCreator(false);
+      setShowChoiceMenu(false);
+      // setShowWatchZonesMenu(false); // Removed to allow the zones menu to remain open
       Animated.timing(slideAnim, {
         toValue: menuOpen ? -menuWidth : 0,
         duration: 300,
@@ -157,16 +166,17 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 200) {
-                        let serverWatchers: Pin[] = []
+                        let serverWatchers: { id: string, coordinates: LatLng, category: string, radius: number }[] = []
                         for (let i = 0; i < data.pins.length; i++) {
-                            serverWatchers = [...serverWatchers, new Pin (
-                                {
+                            serverWatchers = [...serverWatchers, {
+                                id: data.pins[i].pid,
+                                coordinates: {
                                     latitude: data.pins[i].latitude,
                                     longitude: data.pins[i].longitude,
                                 },
-                                data.pins[i].category,
-                                data.pins[i].pid
-                            )]
+                                category: data.pins[i].category,
+                                radius: data.pins[i].radius
+                            }]
                         }
                         setWatchZones(serverWatchers)
                     } else {
@@ -306,13 +316,23 @@ export default function Home() {
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
 
-    // Method for hiding windows
+    // Method for hiding windows and menus
     const hideAllPopups = () => {
-        setShowInspector(false)
-        setShowWatcherMenu(false)
-        setShowCreator(false)
-        setShowChoiceMenu(false)
-    }
+      setShowInspector(false);
+      setShowWatcherMenu(false);
+      setShowCreator(false);
+      setShowChoiceMenu(false);
+      setShowWatchZonesMenu(false);
+     
+      // Close slide-over menu if open
+      if (menuOpen) {
+        Animated.timing(slideAnim, {
+          toValue: -menuWidth,
+          duration: 300,
+          useNativeDriver: false,
+        }).start(() => setMenuOpen(false));
+      }
+    };
 
     // Reference to map to retrieve camera data
     const mapRef = useRef<MapView>(null)
@@ -547,7 +567,13 @@ export default function Home() {
                     <Ionicons name="arrow-back" size={24} color="black" />
                   </TouchableOpacity>
                   <Text style={{ fontSize: 18, marginBottom: 50, top: 30, left:60 }}>Hello, {userData.username}</Text>
-                  <Button title="Profile" onPress={() => { /* navigate to profile */ }} />
+                  <Button
+                    title="My Watch Zones"
+                    onPress={() => {
+                      toggleMenu();
+                      setShowWatchZonesMenu(true);
+                    }}
+                  />
                   <Button title="Settings" onPress={() => { /* navigate to settings */ }} />
                     <Button title="Logout" onPress={handleLogout} />    
                 </Animated.View>
@@ -616,12 +642,34 @@ export default function Home() {
                   ))}
                   {watchZones.map((data, index) => (
                       <Marker 
-                          key={index} 
+                          key={data.id}
                           // pinColor={getPinColor(data.category)}
-                          onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, true)}} 
+                          onPress={() => {
+                            // Clear others
+                            hideAllPopups();
+                            // Show radius and center map
+                            setSelectedZone({ coordinates: data.coordinates, radius: data.radius });
+                            const lat = data.coordinates.latitude;
+                            const lon = data.coordinates.longitude;
+                            const r = data.radius;
+                            const latDelta = (r * 2) / 110000;
+                              const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
+                            mapRef.current?.animateToRegion(
+                              { latitude: lat, longitude: lon, latitudeDelta: latDelta, longitudeDelta: lonDelta },
+                              750
+                            );
+                          }} 
                           coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                       />
                   ))}
+                  {selectedZone && (
+                    <Circle
+                      center={selectedZone.coordinates}
+                      radius={selectedZone.radius}
+                      strokeColor="rgba(0, 0, 255, 0.7)"
+                      fillColor="rgba(0, 0, 255, 0.3)"
+                    />
+                  )}
                   </MapView>
                   <Pressable
                     style={{
@@ -664,6 +712,51 @@ export default function Home() {
                       <Ionicons name="reload" size={24} color="black" />
                     )}
                   </Pressable>
+                  {showWatchZonesMenu && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        maxHeight: 200,
+                        backgroundColor: 'white',
+                        paddingVertical: 12,
+                        borderTopLeftRadius: 12,
+                        borderTopRightRadius: 12,
+                        zIndex: 1000,
+                      }}
+                    >
+                      <Text style={styles.popupHeader}>My Watch Zones</Text>
+                      <ScrollView contentContainerStyle={{ paddingHorizontal: 16 }}>
+                        {watchZones.map((zone) => (
+                          <TouchableOpacity
+                            key={zone.id}
+                            style={styles.popupItem}
+                            onPress={() => {
+                              setSelectedZone(zone);
+                              const lat = zone.coordinates.latitude;
+                              const lon = zone.coordinates.longitude;
+                              const r = zone.radius;
+                              // Calculate deltas to fit circle
+                              const latDelta = (r * 2) / 110000;
+                              const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
+                              mapRef.current?.animateToRegion(
+                                { latitude: lat, longitude: lon, latitudeDelta: latDelta, longitudeDelta: lonDelta },
+                                750
+                              );
+                            }}
+                          >
+                            <Text style={styles.popupText}>{zone.category}</Text>
+                            <Text style={styles.popupTextSmall}>
+                              {zone.coordinates.latitude.toFixed(4)}, {zone.coordinates.longitude.toFixed(4)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      <Button title="Close" onPress={() => setShowWatchZonesMenu(false)} />
+                    </View>
+                  )}
                 </View>
                 {showInspector && 
                     <View style={styles.popup}>
@@ -786,7 +879,7 @@ export default function Home() {
                                     <Slider
                                         style={{ width: 250, height: 40 }}
                                         minimumValue={5}
-                                        maximumValue={100}
+                                        maximumValue={200}
                                         step={5}
                                         value={watcherRadius}
                                         onValueChange={(value: number) => setWatcherRadius(value)}
@@ -818,4 +911,15 @@ export default function Home() {
     );
 }
 
-const styles = homeStyle
+const styles = {
+  ...homeStyle,
+  popupItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderColor: '#ccc',
+  },
+  popupTextSmall: {
+    fontSize: 12,
+    color: '#555',
+  },
+}

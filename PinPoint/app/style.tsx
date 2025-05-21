@@ -38,7 +38,7 @@ const homeStyle = StyleSheet.create({
     },
     map: {
         width: Dimensions.get('window').width,
-        height: Dimensions.get('window').height / 1.3,
+        height: Dimensions.get('window').height,
         zIndex: 1,
     },
     popup: {

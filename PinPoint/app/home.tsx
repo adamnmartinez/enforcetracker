@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
+import { Animated } from "react-native";
 import { TouchableOpacity } from "react-native";
-import { View, Text, Button, ScrollView, Alert, Pressable } from "react-native";
+import { View, Text, Button, ScrollView, Alert, Pressable, ActivityIndicator, SafeAreaView } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -17,7 +18,20 @@ export default function Home() {
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
     const [watchZones, setWatchZones] = useState<Pin[]>([]);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     
+    // Animated value for slide-over menu
+    const menuWidth = 250;
+    const slideAnim = useRef(new Animated.Value(-menuWidth)).current;
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    const toggleMenu = () => {
+      Animated.timing(slideAnim, {
+        toValue: menuOpen ? -menuWidth : 0,
+        duration: 300,
+        useNativeDriver: false,
+      }).start(() => setMenuOpen(!menuOpen));
+    };
     
     // States for choice menu (pin or watch zone)
     const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
@@ -100,7 +114,7 @@ export default function Home() {
     // Fetch Pins from DB
     const fetchPins = () => {
         try {
-            fetch(HOST + "/api/fetchpins", {
+            return fetch(HOST + "/api/fetchpins", {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -128,12 +142,11 @@ export default function Home() {
         } catch (e) {
             Alert.alert("Error", "An error occured populating the user map...(500)")
         }
-        
     }
 
     const fetchWatchers = () => {
         try {
-            fetch(HOST + "/api/fetchwatchers", {
+            return fetch(HOST + "/api/fetchwatchers", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -164,13 +177,16 @@ export default function Home() {
         } catch (e) {
             Alert.alert("Error", "An error occured populating the user map...(500)")
         }
-        
     }
 
-    const refreshPins = () => { 
-        fetchPins() 
-        fetchWatchers()
-    }
+    const refreshPins = async () => {
+        setIsRefreshing(true);
+        try {
+            await Promise.all([fetchPins(), fetchWatchers()]);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     useEffect(() => {
         fetchPins()
@@ -324,7 +340,7 @@ export default function Home() {
             };
             setUserLocation(coords);
             const loadedRegion = {
-                latitude: coords.latitude,
+                latitude: coords.latitude - (0.001 * 0.25),
                 longitude: coords.longitude,
                 latitudeDelta: 0.002,
                 longitudeDelta: 0.002,
@@ -341,10 +357,13 @@ export default function Home() {
         setPinLocation(mapPoint)
         setWatcherLocation(mapPoint)
 
-        // Animate camera movement
+        // Animate camera movement, offset latitude upward by 25% of latitudeDelta
         mapRef.current?.getCamera().then((cam) => {
             mapRef.current?.animateCamera({
-                center: mapPoint,
+                center: {
+                    latitude: mapPoint.latitude - mapRegion.latitudeDelta * 0.25,
+                    longitude: mapPoint.longitude,
+                },
                 heading: cam.heading,
                 pitch: 0,
                 zoom: cam.zoom,
@@ -502,20 +521,63 @@ export default function Home() {
     return (
         <>
         {isLoadingLocation ? (
-            <View style={styles.container}>
+            <SafeAreaView style={[styles.container, { flex: 1 }]}>
                 <Text style={styles.title}>Loading location...</Text>
-            </View>
+            </SafeAreaView>
         ) : (
-            <View style={styles.container}>
-                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 35 , paddingTop: 10, bottom: 25, left: 5 }}>
-                    <TouchableOpacity onPress={handleLogout}
-                    style={{ position: 'absolute', right: 160, top: 70 }}
-                    >
-                        <Text style={{ fontSize: 24}}>←</Text>
-                    </TouchableOpacity>
-                </View>
-                <Text style={styles.title}>Welcome, {userData.username}!</Text>
-                <View style={{ flex: 1 }}>
+            <SafeAreaView style={[styles.container, { flex: 1 }]}>
+                <Animated.View
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: slideAnim,
+                    width: menuWidth,
+                    backgroundColor: "white",
+                    elevation: 5,
+                    zIndex: 1001,
+                    paddingTop: 70,
+                    paddingHorizontal: 20,
+                  }}
+                >
+                  <TouchableOpacity
+                    style={{ position: 'absolute', top: 60, left: 10, padding: 8 }}
+                    onPress={toggleMenu}
+                  >
+                    <Ionicons name="arrow-back" size={24} color="black" />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 18, marginBottom: 50, top: 30, left:60 }}>Hello, {userData.username}</Text>
+                  <Button title="Profile" onPress={() => { /* navigate to profile */ }} />
+                  <Button title="Settings" onPress={() => { /* navigate to settings */ }} />
+                    <Button title="Logout" onPress={handleLogout} />    
+                </Animated.View>
+                <TouchableOpacity
+                    style={{
+                        position: 'absolute',
+                        top: 70,
+                        left: 10,
+                        padding: 8,
+                        zIndex: 1000,
+                    }}
+                    onPress={toggleMenu}
+                >
+                    <Ionicons name="menu" size={30} color="black" />
+                </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.title,
+                    {
+                      marginTop: 16,
+                      backgroundColor: "rgba(255,255,255,0.9)",
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 4,
+                    },
+                  ]}
+                >
+                  Welcome, {userData.username}!
+                </Text>
+                <View style={{ flex: 1}}>
                   <MapView 
                       ref={mapRef}
                       style={styles.map}
@@ -582,6 +644,25 @@ export default function Home() {
                     }}
                   >
                     <Ionicons name="locate" size={24} color="black" />
+                  </Pressable>
+                  <Pressable
+                    style={{
+                      position: 'absolute',
+                      top: 60,
+                      right: 10,
+                      backgroundColor: 'white',
+                      padding: 8,
+                      borderRadius: 20,
+                      elevation: 4,
+                      zIndex: 1000,
+                    }}
+                    onPress={refreshPins}
+                  >
+                    {isRefreshing ? (
+                      <ActivityIndicator size="small" />
+                    ) : (
+                      <Ionicons name="reload" size={24} color="black" />
+                    )}
                   </Pressable>
                 </View>
                 {showInspector && 
@@ -731,19 +812,7 @@ export default function Home() {
                         
                     </View>
                 }
-                <View style={{
-                    position: 'absolute',
-                    top: 590,
-                    left: 0,
-                    right: 0,
-                    alignItems: 'center',
-                    paddingVertical: 25,
-                }}>
-                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={refreshPins}>
-                        <Text style={styles.buttonText}>Reload</Text>
-                    </Pressable>
-                </View>
-            </View>
+            </SafeAreaView>
         )}
         </>
     );

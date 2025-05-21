@@ -1,34 +1,9 @@
-//import express, { Router } from 'express';
-//import { pool } from './test.js'
-//const HOST = ""
+import { useRouter } from "expo-router";
+import { HOST } from "./server";
 
-const addEntryValidity = (user: string) =>{
+export function endorsePin(user: string, pid: string){
   try{
-    fetch(HOST + "/tasks/addUser", {
-      method: "POST",
-      headers:{
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user: user,
-      })
-    }).then((response) =>{
-      response.json().then((data)=>{
-        if (response.status == 201){
-          console.log("Success")
-        }else{
-          console.log("Error")
-        }
-      })
-    })
-  }catch(e){
-    console.log(e)
-  }
-}
-
-const endorsePin = (user: string, pid: string) =>{
-  try{
-    fetch(HOST + "/tasks/add", {
+    fetch(HOST + "/api/validates/add", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -47,16 +22,14 @@ const endorsePin = (user: string, pid: string) =>{
       })
     })
   }catch (e){
-    console.log("Error")
+    console.log("Unable to connect")
     console.log(e)
   }
 }
 
-const unendorsePin = (user: string, pid: string) =>{
-
+export function unendorsePin(user: string, pid: string){
   try{
-
-    fetch(HOST + "/tasks/delete", {
+    fetch(HOST + "/api/validates/delete", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -65,9 +38,7 @@ const unendorsePin = (user: string, pid: string) =>{
         user: user,
         pin:  pid,
       })
-
     }).then((response) => {
-
       response.json().then((data) => {
         if (response.status == 201) {
           console.log("Success")
@@ -75,38 +46,33 @@ const unendorsePin = (user: string, pid: string) =>{
           console.log("Internal Error")
         }
       })
-
     })
-
   }catch (e){
-    console.log("Error")
+    console.log("Unable to connect")
     console.log(e)
   }
 }
 
-const allValidates = (pid: string)=>{
+export function userEndorsed(pid: string){
   try{
-    fetch(HOST + "/tasks/validates/" + pid, {
+    fetch(HOST + "/api/validates/" + pid, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "pid": pid,
-      },
-    }
-  ).then((response)=>{
-      response.json().then((data)=>{
-        if(response.status == 200){
-          console.log(data)
-          return data
+      }
+    }).then((response) => {
+      response.json().then((data) => {
+        if (response.status == 200) {
           console.log("Success")
-          //console.log(response)
         }else{
-          console.log("Error")
+          console.log("Internal Error")
         }
       })
     })
-  } catch (e){
-    console.log("Error")
+  }catch (e){
+    console.log("Unable to connect")
     console.log(e)
   }
 }
+
+export {userEndorsed, unendorsePin, endorsePin, endorsePin}

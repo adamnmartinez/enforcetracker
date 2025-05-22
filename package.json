@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "expo-constants": "^17.1.6",
+    "expo-device": "^7.1.4",
+    "expo-dev-client": "~5.1.8"
+  }
+}

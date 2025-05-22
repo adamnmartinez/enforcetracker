@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "f8793893-3e93-4782-b763-4be0e3f5a38c"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.slugwatch.pinpoint",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { TouchableOpacity } from "react-native";
-import { View, Text, Button, ScrollView, Alert, Pressable } from "react-native";
+import { View, Text, Button, ScrollView, Alert, Pressable, Platform } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -11,68 +11,137 @@ import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
 import { HOST } from "./server";
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+
+function handleRegistrationError(errorMessage: string) {
+    Alert.alert("Notification Error", errorMessage);
+}  
+
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+});
+
+async function registerForPushNotificationsAsync() {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+  
+    if (Device.isDevice) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        handleRegistrationError('Permission not granted to get push token for push notification!');
+        return;
+      }
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+      if (!projectId) {
+        handleRegistrationError('Project ID not found');
+      }
+      try {
+        const pushTokenString = (
+          await Notifications.getExpoPushTokenAsync({
+            projectId,
+          })
+        ).data;
+        console.log(pushTokenString);
+        return pushTokenString;
+      } catch (e: unknown) {
+        handleRegistrationError(`${e}`);
+      }
+    } else {
+      handleRegistrationError('Must use physical device for push notifications');
+    }
+}
 
 export default function Home() {
-    const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
+
+    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
+    const [IDTracker, setIDTracker] = useState<number>(0)
+    // User Auth Token
+    const { userToken, signOut } = useContext(AuthContext);
     const [markers, setMarkers] = useState<Pin[]>([]);
     const [watchZones, setWatchZones] = useState<Pin[]>([]);
-    
-    
-    // States for choice menu (pin or watch zone)
+    // Menu States
     const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
     const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
-    const [userData, setUserData] = useState<{username: string, id: string}>({
+    // User's data, used by several methods.
+    const [userData, setUserData] = useState<{username: string, id: string, expotoken: string}>({
         username: "",
         id: "",
+        expotoken: ""
     })
-
-    // States for creating a new pin
+    // States for pins
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
     const [pinLocation, setPinLocation] = useState<{ latitude: number, longitude: number}>({
         latitude: 0,
         longitude: 0,
     })
-
+    // States for watchers
     const [watcherCategory, setWatcherCategory] = useState<string>("")
     const [watcherLocation, setWatcherLocation] = useState<{ latitude: number, longitude: number}>({
         latitude: 0,
         longitude: 0,
     })
-
     const [watcherRadius, setWatcherRadius] = useState<number>(100);
-
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
     const [inspected, setInspected] = useState<{pin: Pin, isWatcher: Boolean}>()
     const [endorsed, setEndorsed] = useState<string[]>([])
-
-    // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
+    // Map Region State
     const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
         latitudeDelta: 0.01, 
         longitudeDelta: 0.01,
     })
-    // Track the initial region after loading user location
+    // Use Region (map view coordinates)
     const [initialRegion, setInitialRegion] = useState<Region | null>(null);
-
+    // Map Reference
+    const mapRef = useRef<MapView>(null)
+    // Track user location
+    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
     // Creator menu dropdown options, "Categories"
     const public_category = [
         { label: 'Police', value: 'Police' },
         { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
         { label: 'Parking Enforcement', value: 'Parking Enforcment' },
-        { label: 'Robbery', value: 'Robbery' },
-        { label: 'Tresspasser', value: 'Tresspassing' },
+        { label: "Campus Security (CSO)", value: "CSO"}
     ];  
-
     const private_category = [
         { label: 'Home', value: 'Home' },
         { label: 'Work', value: 'Work' },
         { label: 'Car', value: 'Car' },
         { label: 'General', value: 'General'}
     ]
+    // Notification States
+    const [expoPushToken, setExpoPushToken] = useState('');
+    const [channels, setChannels] = useState<Notifications.NotificationChannel[]>([]);
+    const [notification, setNotification] = useState<Notifications.Notification | undefined>(
+        undefined
+    );
+    // Notification References
+    const notificationListener = useRef<Notifications.EventSubscription>(null);
+    const responseListener = useRef<Notifications.EventSubscription>(null);
 
     // Convert category string to CSS Color for display
     const getPinColor = (category: string) => {
@@ -86,10 +155,7 @@ export default function Home() {
             case "Parking Enforcment":
                 return "yellow"
 
-            case "Robbery":
-                return "purple"
-
-            case "Tresspassing":
+            case "CSO":
                 return "brown"
 
             default:
@@ -97,8 +163,8 @@ export default function Home() {
         }
     } 
 
-    // Fetch Pins from DB
-    const fetchPins = () => {
+    // DB Call Methods
+    const fetchPinsCall = () => {
         try {
             fetch(HOST + "/api/fetchpins", {
                 method: "GET",
@@ -131,7 +197,7 @@ export default function Home() {
         
     }
 
-    const fetchWatchers = () => {
+    const fetchWatchersCall = () => {
         try {
             fetch(HOST + "/api/fetchwatchers", {
                 method: "POST",
@@ -168,17 +234,11 @@ export default function Home() {
     }
 
     const refreshPins = () => { 
-        fetchPins() 
-        fetchWatchers()
+        fetchPinsCall() 
+        fetchWatchersCall()
     }
 
-    useEffect(() => {
-        fetchPins()
-        fetchWatchers()
-        fetchUserData()
-    }, [])
-
-    const fetchUserData = async () => {
+    const fetchUserDataCall = async () => {
         if (!userToken) Alert.alert("NO TOKEN DETECTED")
 
         try {
@@ -194,6 +254,7 @@ export default function Home() {
                         setUserData({
                             username: data.username, 
                             id: data.id,
+                            expotoken: data.expotoken
                         })
                     } else {
                         Alert.alert("User Fetch Error", "We ran into an error communicating with the server (500)")
@@ -205,8 +266,7 @@ export default function Home() {
         }
     }
 
-    // Fetch Pins from DB
-    const uploadPin = (category: string, coordinates: LatLng, author: string) => {
+    const uploadPinCall = (category: string, coordinates: LatLng, author: string) => {
         try {
             fetch(HOST + "/api/pushpin", {
                 method: "POST",
@@ -231,11 +291,11 @@ export default function Home() {
         } catch (e) {
             Alert.alert("Error", e?.toString())
         } finally {
-            fetchPins()
+            fetchPinsCall()
         }
     }
 
-    const uploadWatcher = (category: string, coordinates: LatLng, author: string, radius: number) => {
+    const uploadWatcherCall = (category: string, coordinates: LatLng, author: string, radius: number) => {
         try {
             fetch(HOST + "/api/pushwatcher", {
                 method: "POST",
@@ -252,7 +312,7 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 201) {
-                        fetchWatchers()
+                        fetchWatchersCall()
                     } else {
                         Alert.alert("Watcher Upload Error", "We ran into an error with the server (500)")
                     }
@@ -263,7 +323,7 @@ export default function Home() {
         }   
     }
 
-    const removeWatcher = async (pin_id: string) => {
+    const removeWatcherCall = async (pin_id: string) => {
         try {
             fetch(HOST + "/api/deletewatcher", {
                 method: "POST",
@@ -276,7 +336,7 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 200) {
-                        fetchWatchers()
+                        fetchWatchersCall()
                     } else {
                         Alert.alert("Watcher Delete Error", "We ran into an error with the server (500)")
                     }
@@ -287,9 +347,6 @@ export default function Home() {
         }
     }
 
-    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
-    const [IDTracker, setIDTracker] = useState<number>(0)
-
     // Method for hiding windows
     const hideAllPopups = () => {
         setShowInspector(false)
@@ -298,42 +355,11 @@ export default function Home() {
         setShowChoiceMenu(false)
     }
 
-    // Reference to map to retrieve camera data
-    const mapRef = useRef<MapView>(null)
-    // Track user location
-    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
-    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
-
+    // Frontend handler functions
     const handleLogout = async () => {
         await signOut();
         router.replace("/login");
     };
-
-    // Track user location on load
-    useEffect(() => {
-        (async () => {
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Location access is required.');
-                return;
-            }
-            let location = await Location.getCurrentPositionAsync({});
-            const coords = {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
-            };
-            setUserLocation(coords);
-            const loadedRegion = {
-                latitude: coords.latitude,
-                longitude: coords.longitude,
-                latitudeDelta: 0.002,
-                longitudeDelta: 0.002,
-            };
-            setMapRegion(loadedRegion);
-            setInitialRegion(loadedRegion);
-            setIsLoadingLocation(false);
-        })();
-    }, []);
 
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
@@ -357,7 +383,7 @@ export default function Home() {
         setShowChoiceMenu(true)
     }
 
-    const handleNewPin = async() => {
+    const handleCreatePin = async() => {
         // Create new pin object and assign ID
         if (pinCategory == "") {
             Alert.alert("Error", "Please select a category")
@@ -378,7 +404,7 @@ export default function Home() {
         setMapRegion(newRegion);
 
         try {
-            uploadPin(pinCategory, pinLocation, userData.id)
+            uploadPinCall(pinCategory, pinLocation, userData.id)
         } catch (e) {
             Alert.alert("An error occured handling a new pin upload.")
         }  finally {
@@ -391,7 +417,7 @@ export default function Home() {
         
     }
 
-    const handleNewWatcher = async () => {
+    const handleCreateWatcher = async () => {
         if (watcherCategory == "") {
             Alert.alert("Error", "Please select a category")
             return
@@ -412,7 +438,7 @@ export default function Home() {
 
         Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
 
-        uploadWatcher(watcherCategory, watcherLocation, userData.id, watcherRadius)
+        uploadWatcherCall(watcherCategory, watcherLocation, userData.id, watcherRadius)
 
         hideAllPopups()
         refreshPins()
@@ -454,7 +480,7 @@ export default function Home() {
             Alert.alert("Could not delete", "Pin ID is undefined.")
             return
         }
-        removeWatcher(pin_id)
+        removeWatcherCall(pin_id)
         hideAllPopups()
         refreshPins()
     }
@@ -498,6 +524,60 @@ export default function Home() {
             }
         }
     }  
+
+    // Track user location on load
+    useEffect(() => {
+        (async () => {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location access is required.');
+                return;
+            }
+            let location = await Location.getCurrentPositionAsync({});
+            const coords = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            };
+            setUserLocation(coords);
+            const loadedRegion = {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002,
+            };
+            setMapRegion(loadedRegion);
+            setInitialRegion(loadedRegion);
+            setIsLoadingLocation(false);
+        })();
+    }, []);
+
+    useEffect(() => {
+        fetchPinsCall()
+        fetchWatchersCall()
+        fetchUserDataCall()
+    }, [])
+
+    useEffect(() => {
+        registerForPushNotificationsAsync().then(token => token && setExpoPushToken(token));
+
+        if (Platform.OS === 'android') {
+          Notifications.getNotificationChannelsAsync().then(value => setChannels(value ?? []));
+        }
+        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+          setNotification(notification);
+        });
+    
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+          console.log(response);
+        });
+    
+        return () => {
+          notificationListener.current &&
+            Notifications.removeNotificationSubscription(notificationListener.current);
+          responseListener.current &&
+            Notifications.removeNotificationSubscription(responseListener.current);
+        };
+    }, []);
 
     return (
         <>
@@ -656,7 +736,7 @@ export default function Home() {
                                 marginTop: 10,
                             }
                         }>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewPin}>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreatePin}>
                                 <Text style={styles.buttonText}>Create</Text>
                             </Pressable>
                             <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
@@ -719,7 +799,7 @@ export default function Home() {
                                         marginTop: 10,
                                     }
                                 }>
-                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreateWatcher}>
                                         <Text style={styles.buttonText}>Create</Text>
                                     </Pressable>
                                     <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>

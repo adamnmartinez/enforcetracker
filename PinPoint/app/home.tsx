@@ -18,10 +18,11 @@ export default function Home() {
     const router = useRouter();
     const [markers, setMarkers] = useState<Pin[]>([]);
     const [watchZones, setWatchZones] = useState<{ id: string, coordinates: LatLng, category: string, radius: number }[]>([]);
+    
     // State to track which zone is selected for viewing radius
     const [selectedZone, setSelectedZone] = useState<{ coordinates: LatLng; radius: number } | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [showWatchZonesMenu, setShowWatchZonesMenu] = useState(true);
+    const [showWatchZonesMenu, setShowWatchZonesMenu] = useState(false);
     
     // Animated value for slide-over menu
     const menuWidth = 250;
@@ -323,7 +324,7 @@ export default function Home() {
       setShowCreator(false);
       setShowChoiceMenu(false);
       setShowWatchZonesMenu(false);
-     
+      //setSelectedZone(null);
       // Close slide-over menu if open
       if (menuOpen) {
         Animated.timing(slideAnim, {
@@ -457,36 +458,65 @@ export default function Home() {
         refreshPins()
     }
 
-    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number, isWatcher: Boolean) => {
-        setInspected({ 
-            pin: {
-                id: id,
-                coordinates: coordinates,
-                category: category,
-                validity: validity
+    const handleInspectData = (
+      id: string,
+      coordinates: LatLng,
+      category: string,
+      validity: number,
+      isWatcher: Boolean,
+      radius?: number
+    ) => {
+        setInspected({
+          pin: {
+            id: id,
+            coordinates: coordinates,
+            category: category,
+            validity: validity,
+          },
+          isWatcher: isWatcher,
+        });
+        // Removed isWatcher && radius block
+    }
+
+    const handleMarkerClick = async (event: MarkerPressEvent, radius?: number) => {
+        const markerPoint = event.nativeEvent.coordinate;
+        // Hide any open popups
+        hideAllPopups();
+        if (radius) {
+           
+          setSelectedZone({ coordinates: event.nativeEvent.coordinate, radius });
+          const lat = event.nativeEvent.coordinate.latitude;
+          const lon = event.nativeEvent.coordinate.longitude;
+          const latDelta = (radius * 2) / 111000;
+          const lonDelta = latDelta / Math.cos(lat * Math.PI / 180);
+          // Center above the marker, offset by 25% of latitudeDelta
+          const latOffset = mapRegion.latitudeDelta * 0.25;
+          mapRef.current?.animateToRegion(
+            {
+              latitude: lat + latOffset,
+              longitude: lon,
+              latitudeDelta: latDelta,
+              longitudeDelta: lonDelta
             },
-            isWatcher: isWatcher
-        })
-    }
-
-    const handleMarkerClick = async (event: MarkerPressEvent) => {
-        const markerPoint = event.nativeEvent.coordinate
-
-        mapRef.current?.getCamera().then((cam) => {
-            mapRef.current?.animateCamera({
-                center: {latitude: markerPoint.latitude, longitude: markerPoint.longitude},
-                heading: cam.heading,
-                pitch: 0,
-                zoom: cam.zoom,
-                altitude: cam.altitude
-            }, { duration: 1500 })
-        })
-
-        hideAllPopups()
-
-        setShowInspector(true)
-        
-    }
+            1500
+          );
+        } else {
+          // Compute vertical offset: push marker up by 25% of current latitudeDelta
+          const latOffset = mapRegion.latitudeDelta * 0.25;
+          // Animate map to region centered above the marker
+          mapRef.current?.animateToRegion(
+            {
+              latitude: markerPoint.latitude - latOffset,
+              longitude: markerPoint.longitude,
+              latitudeDelta: mapRegion.latitudeDelta,
+              longitudeDelta: mapRegion.longitudeDelta,
+            },
+            1500
+          );
+        }
+        // Show inspector popup
+        setShowInspector(true);
+    };
 
     const handleDeleteWatcher = async (pin_id: string | undefined) => {
         if (pin_id == undefined){
@@ -495,6 +525,7 @@ export default function Home() {
         }
         removeWatcher(pin_id)
         hideAllPopups()
+        setSelectedZone(null)
         refreshPins()
     }
 
@@ -610,8 +641,16 @@ export default function Home() {
                       region={mapRegion}
                       onRegionChangeComplete={(region) => setMapRegion(region)}
                       onLongPress={(event) => {handleMapLongPress(event)}}
-                      onMarkerPress={(event) => {handleMarkerClick(event)}}
-                      onPress={() => hideAllPopups()}
+                      onMarkerPress={(event) => {
+                        handleMarkerClick(event);
+                    }}
+                      onPress={() => {
+                        // Clear the radius circle when watcher inspector or watch-zones list is open
+                        if ((showInspector && inspected?.isWatcher) || showWatchZonesMenu) {
+                          setSelectedZone(null);
+                        }
+                        hideAllPopups();
+                      }}
                       showsUserLocation={true}
                   >
                   {(showChoiceMenu || showCreator || showWatcherMenu) && (
@@ -642,23 +681,35 @@ export default function Home() {
                   ))}
                   {watchZones.map((data, index) => (
                       <Marker 
-                          key={data.id}
+                          key={index}
+
                           // pinColor={getPinColor(data.category)}
                           onPress={() => {
-                            // Clear others
-                            hideAllPopups();
-                            // Show radius and center map
-                            setSelectedZone({ coordinates: data.coordinates, radius: data.radius });
+                            handleInspectData(data.id, data.coordinates, data.category, 0, true, data.radius);
+                            setSelectedZone({
+                            coordinates: data.coordinates,
+                            radius: data.radius
+                            });
                             const lat = data.coordinates.latitude;
                             const lon = data.coordinates.longitude;
                             const r = data.radius;
+                            // Calculate deltas to fit circle
                             const latDelta = (r * 2) / 110000;
-                              const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
-                            mapRef.current?.animateToRegion(
-                              { latitude: lat, longitude: lon, latitudeDelta: latDelta, longitudeDelta: lonDelta },
-                              750
-                            );
-                          }} 
+                            const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
+        
+                        // Center within the visible map (not behind bottom menu)
+                        const bottomFraction = 0.5; // bottom sheet covers 50% of height
+                        const latOffset = latDelta * (bottomFraction * 2.5);
+                        mapRef.current?.animateToRegion(
+                            {
+                            latitude: lat - latOffset,
+                            longitude: lon,
+                            latitudeDelta: latDelta,
+                            longitudeDelta: lonDelta
+                            },
+                            750
+                       );
+                        }}
                           coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                       />
                   ))}
@@ -668,6 +719,7 @@ export default function Home() {
                       radius={selectedZone.radius}
                       strokeColor="rgba(0, 0, 255, 0.7)"
                       fillColor="rgba(0, 0, 255, 0.3)"
+                      zIndex={1000}
                     />
                   )}
                   </MapView>
@@ -712,52 +764,65 @@ export default function Home() {
                       <Ionicons name="reload" size={24} color="black" />
                     )}
                   </Pressable>
-                  {showWatchZonesMenu && (
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        maxHeight: 200,
-                        backgroundColor: 'white',
-                        paddingVertical: 12,
-                        borderTopLeftRadius: 12,
-                        borderTopRightRadius: 12,
-                        zIndex: 1000,
-                      }}
-                    >
-                      <Text style={styles.popupHeader}>My Watch Zones</Text>
-                      <ScrollView contentContainerStyle={{ paddingHorizontal: 16 }}>
-                        {watchZones.map((zone) => (
-                          <TouchableOpacity
-                            key={zone.id}
-                            style={styles.popupItem}
-                            onPress={() => {
-                              setSelectedZone(zone);
-                              const lat = zone.coordinates.latitude;
-                              const lon = zone.coordinates.longitude;
-                              const r = zone.radius;
-                              // Calculate deltas to fit circle
-                              const latDelta = (r * 2) / 110000;
-                              const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
-                              mapRef.current?.animateToRegion(
-                                { latitude: lat, longitude: lon, latitudeDelta: latDelta, longitudeDelta: lonDelta },
-                                750
-                              );
-                            }}
-                          >
-                            <Text style={styles.popupText}>{zone.category}</Text>
-                            <Text style={styles.popupTextSmall}>
-                              {zone.coordinates.latitude.toFixed(4)}, {zone.coordinates.longitude.toFixed(4)}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                      <Button title="Close" onPress={() => setShowWatchZonesMenu(false)} />
-                    </View>
-                  )}
                 </View>
+                {showWatchZonesMenu && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: '50%',
+                      backgroundColor: 'white',
+                      paddingVertical: 12,
+                      borderTopLeftRadius: 12,
+                      borderTopRightRadius: 12,
+                      zIndex: 1000,
+                    }}
+                  >
+                    <Text style={styles.popupHeader}>My Watch Zones</Text>
+                    <ScrollView style={{ flex: 1, paddingHorizontal: 16 }}>
+                      {watchZones.map((zone) => (
+                        <TouchableOpacity
+                          key={zone.id}
+                          style={styles.popupItem}
+                          onPress={() => {
+                            setSelectedZone(zone);
+
+                            const lat = zone.coordinates.latitude;
+                            const lon = zone.coordinates.longitude;
+                            const r = zone.radius;
+                            // Calculate deltas to fit circle
+                            const latDelta = (r * 2) / 110000;
+                            const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
+        
+                        // Center within the visible map (not behind bottom menu)
+                        const bottomFraction = 0.5; // bottom sheet covers 50% of height
+                        const latOffset = latDelta * (bottomFraction * 2.5);
+                        mapRef.current?.animateToRegion(
+                            {
+                            latitude: lat - latOffset,
+                            longitude: lon,
+                            latitudeDelta: latDelta,
+                            longitudeDelta: lonDelta
+                            },
+                            750
+                       );
+                          }}
+                        >
+                          <Text style={styles.popupText}>{zone.category}</Text>
+                          <Text style={styles.popupTextSmall}>
+                            {zone.coordinates.latitude.toFixed(4)}, {zone.coordinates.longitude.toFixed(4)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <Button title="Close" onPress={() => {
+                            hideAllPopups();
+                            setSelectedZone(null)
+                            }}/>
+                  </View>
+                )}
                 {showInspector && 
                     <View style={styles.popup}>
                         <Text style={styles.popupHeader}>{ inspected?.isWatcher ? "Watch Zone" : "Report"}</Text>
@@ -770,7 +835,10 @@ export default function Home() {
                         { inspected && endorsed.includes(inspected.pin.id) &&
                             <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.pin.id)}}></Button>
                         }
-                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                        <Button title="Close" onPress={() => {
+                            hideAllPopups();
+                            setSelectedZone(null)
+                            }}/>
                     </View>
                 }
                 {showChoiceMenu &&
@@ -785,7 +853,10 @@ export default function Home() {
                                 hideAllPopups()
                                 setShowWatcherMenu(true)
                                 }}/>
-                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                            <Button title="Close" onPress={() => {
+                            hideAllPopups();
+                            setSelectedZone(null)
+                            }}/>
                         </View>
                     </View>
                 }
@@ -882,7 +953,25 @@ export default function Home() {
                                         maximumValue={200}
                                         step={5}
                                         value={watcherRadius}
-                                        onValueChange={(value: number) => setWatcherRadius(value)}
+                                        onValueChange={(value: number) => {
+                                            setWatcherRadius(value);
+                                        }}
+                                        onSlidingComplete={(value: number) => {
+                                            // Animate map to fit the completed radius
+                                            const lat = watcherLocation.latitude;
+                                            const lon = watcherLocation.longitude;
+                                            const latDelta = (value * 2) / 111000;
+                                            const lonDelta = latDelta / Math.cos(lat * Math.PI / 180);
+                                            const latOffset = latDelta * 0.25; // offset to account for bottom sheet
+                                            const region = {
+                                              latitude: lat - latOffset * 2,
+                                              longitude: lon,
+                                              latitudeDelta: latDelta,
+                                              longitudeDelta: lonDelta,
+                                            };
+                                            mapRef.current?.animateToRegion(region, 300);
+                                            setMapRegion(region);
+                                        }}
                                     />
                                 </View>
                                 <View style={

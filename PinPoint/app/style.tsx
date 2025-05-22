@@ -39,7 +39,7 @@ const homeStyle = StyleSheet.create({
     map: {
         width: Dimensions.get('window').width,
         height: Dimensions.get('window').height,
-        zIndex: 1,
+        zIndex: 0,
     },
     popup: {
         flex: 1,

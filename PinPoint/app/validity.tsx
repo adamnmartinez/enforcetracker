@@ -3,7 +3,7 @@ import { HOST } from "./server";
 
 export function addEntryValidity(user: string){
   try{
-    fetch(HOST + "/tasks/addUser", {
+    fetch(HOST + "/api/validates/addUser", {
       method: "POST",
       headers:{
         "Content-Type": "application/json",
@@ -26,9 +26,6 @@ export function addEntryValidity(user: string){
 }
 
 export function endorsePin(user: string, pid: string){
-   console.log("In endorsePin")
-   console.log(user, pid)
-   console.log("endorsePin end")
    try{
     fetch(HOST + "/api/validates/add", {
       method: "POST",

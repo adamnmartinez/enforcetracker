@@ -10,6 +10,8 @@ import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
 import { HOST } from "./server";
 
+
+
 export default function Home() {
     const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
@@ -35,6 +37,9 @@ export default function Home() {
     const [showInspector, setShowInspector] = useState<Boolean>(false);
     const [inspected, setInspected] = useState<Pin>()
     const [endorsed, setEndorsed] = useState<string[]>([])
+
+    const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
+
 
     // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
     const [mapRegion, setMapRegion] = useState<Region>({
@@ -184,6 +189,32 @@ export default function Home() {
         }
         
     }
+
+    const deletePin = (pid: string, uid: number) => {
+        try {
+            fetch(HOST + "/api/deletepin", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ pid, uid })
+        })
+        .then(response => {
+            response.json().then(data => {
+                if (response.status === 200) {
+                    fetchPins();
+                    Alert.alert("Pin deleted successfully");
+        } else {
+            Alert.alert("Error", data.message || "Failed to delete pin");
+        }
+      });
+    });
+  } catch (e) {
+    Alert.alert("Error", e?.toString());
+  }
+};
+
+
 
     // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
     const [IDTracker, setIDTracker] = useState<number>(0)
@@ -391,8 +422,18 @@ export default function Home() {
                     <Marker 
                         key={index} 
                         pinColor={getPinColor(data.category)}
-                        onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
-                        coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
+
+                        //onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                        onPress={() => {
+                        handleInspectData(data.id, data.coordinates, data.category, data.validity);
+                        setSelectedPin(data);             // Save selected pin
+                        setShowChoiceMenu(true);          // Show popup menu
+                        }}
+
+                        coordinate={{
+                            latitude: data.coordinates.latitude, 
+                            longitude: data.coordinates.longitude
+                        }}
                     />
                 ))}
                 </MapView>
@@ -401,10 +442,23 @@ export default function Home() {
                         <Text style={styles.popupHeader}>Pin Inspection</Text>
                         <Text style={styles.popupText}>ID: {inspected?.id}</Text>
                         <Text style={styles.popupText}>Category: {inspected?.category}</Text>
+
                         <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
+
                         { inspected && endorsed.includes(inspected.id) &&
                             <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
                         }
+                       
+                        <Button
+                            title="Delete Pin"
+                            color="red"
+                            onPress={() => {
+                                if (!inspected) return;
+                                    deletePin(inspected.id, userData.id);
+                                    hideAllPopups();
+                            }}
+                        />
+
                         <Button title="Close" onPress={() => {hideAllPopups()}}/>
                     </View>
                 }
@@ -470,6 +524,7 @@ export default function Home() {
                                 hideAllPopups()
                                 setShowWatcherMenu(true)
                                 }}/>
+
                             <Button title="Close" onPress={() => {hideAllPopups()}}/>
                         </View>
                     </View>

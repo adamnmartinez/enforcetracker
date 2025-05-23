@@ -4,6 +4,7 @@ import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { HOST } from "./server";
 import { authStyle, placeholderColor } from "./style";
+import * as Notifications from "expo-notifications"
 
 export default function Login() {
     const { signIn } = useContext(AuthContext);
@@ -13,22 +14,25 @@ export default function Login() {
 
     const handleLogin = async () => {
         try {
+            const { data: expotoken} = await Notifications.getExpoPushTokenAsync()
             const response = await fetch(HOST + "/api/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({ username, password, expotoken }),
             });
             const data = await response.json();
             if (response.status == 200) {
                 await signIn(data.token);
-                router.replace("/home");
+                     
+            router.replace("/home");
             } else {
                 Alert.alert("Login Failed", data.message || "Invalid credentials");
             }
         } catch (error) {
-            Alert.alert("Network Error", "An error occurred. Please try again.");
+            //Alert.alert("Network Error", "An error occurred. Please try again.");
+            Alert.alert("Error", error?.toString())
         }
     };
 

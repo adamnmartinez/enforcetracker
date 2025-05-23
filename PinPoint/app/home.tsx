@@ -1,68 +1,149 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { TouchableOpacity } from "react-native";
-import { View, Text, Button, Alert, Pressable } from "react-native";
+import { View, Text, Button, ScrollView, Alert, Pressable, Platform } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
-import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera } from "react-native-maps"
+import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera, Circle } from "react-native-maps"
+import Slider from '@react-native-community/slider';
 import { Pin } from "./pin";
 import { Dropdown } from "react-native-element-dropdown"
 import * as Location from 'expo-location';
 import { HOST } from "./server";
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+
+function handleRegistrationError(errorMessage: string) {
+    Alert.alert("Notification Error", errorMessage);
+}  
+
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+});
+
+async function registerForPushNotificationsAsync() {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+  
+    if (Device.isDevice) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        handleRegistrationError('Permission not granted to get push token for push notification!');
+        return;
+      }
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+      if (!projectId) {
+        handleRegistrationError('Project ID not found');
+      }
+      try {
+        const pushTokenString = (
+          await Notifications.getExpoPushTokenAsync({
+            projectId,
+          })
+        ).data;
+        console.log(pushTokenString);
+        return pushTokenString;
+      } catch (e: unknown) {
+        handleRegistrationError(`${e}`);
+      }
+    } else {
+      handleRegistrationError('Must use physical device for push notifications');
+    }
+}
 
 
 
 export default function Home() {
-    const { userToken, signOut } = useContext(AuthContext);
     const router = useRouter();
+
+    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
+    const [IDTracker, setIDTracker] = useState<number>(0)
+    // User Auth Token
+    const { userToken, signOut } = useContext(AuthContext);
     const [markers, setMarkers] = useState<Pin[]>([]);
-    
-    // States for choice menu (pin or watch zone)
+    const [watchZones, setWatchZones] = useState<Pin[]>([]);
+    // Menu States
     const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
     const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
-    const [userData, setUserData] = useState<{username: string, id: number}>({
+    // User's data, used by several methods.
+    const [userData, setUserData] = useState<{username: string, id: string, expotoken: string}>({
         username: "",
-        id: 0,
+        id: "",
+        expotoken: ""
     })
-
-    // States for creating a new pin
+    // States for pins
     const [showCreator, setShowCreator] = useState<Boolean>(false);
     const [pinCategory, setPinCategory] = useState<string>("");
     const [pinLocation, setPinLocation] = useState<{ latitude: number, longitude: number}>({
         latitude: 0,
         longitude: 0,
     })
-
+    // States for watchers
+    const [watcherCategory, setWatcherCategory] = useState<string>("")
+    const [watcherLocation, setWatcherLocation] = useState<{ latitude: number, longitude: number}>({
+        latitude: 0,
+        longitude: 0,
+    })
+    const [watcherRadius, setWatcherRadius] = useState<number>(100);
     // State for pin inspection.
     const [showInspector, setShowInspector] = useState<Boolean>(false);
-    const [inspected, setInspected] = useState<Pin>()
+    const [inspected, setInspected] = useState<{pin: Pin, isWatcher: Boolean}>()
     const [endorsed, setEndorsed] = useState<string[]>([])
-
-    const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
-
-
-    // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
+    // Map Region State
     const [mapRegion, setMapRegion] = useState<Region>({
         latitude: 36.974117,
         longitude: -122.030792,
         latitudeDelta: 0.01, 
         longitudeDelta: 0.01,
     })
-
+    // Use Region (map view coordinates)
+    const [initialRegion, setInitialRegion] = useState<Region | null>(null);
+    // Map Reference
+    const mapRef = useRef<MapView>(null)
+    // Track user location
+    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
     // Creator menu dropdown options, "Categories"
     const public_category = [
         { label: 'Police', value: 'Police' },
         { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
         { label: 'Parking Enforcement', value: 'Parking Enforcment' },
-        { label: 'Robbery', value: 'Robbery' },
-        { label: 'Tresspasser', value: 'Tresspassing' },
+        { label: "Campus Security (CSO)", value: "CSO"}
     ];  
-
     const private_category = [
         { label: 'Home', value: 'Home' },
+        { label: 'Work', value: 'Work' },
         { label: 'Car', value: 'Car' },
         { label: 'General', value: 'General'}
     ]
+    // Notification States
+    const [expoPushToken, setExpoPushToken] = useState('');
+    const [channels, setChannels] = useState<Notifications.NotificationChannel[]>([]);
+    const [notification, setNotification] = useState<Notifications.Notification | undefined>(
+        undefined
+    );
+    // Notification References
+    const notificationListener = useRef<Notifications.EventSubscription>(null);
+    const responseListener = useRef<Notifications.EventSubscription>(null);
 
     // Convert category string to CSS Color for display
     const getPinColor = (category: string) => {
@@ -76,10 +157,7 @@ export default function Home() {
             case "Parking Enforcment":
                 return "yellow"
 
-            case "Robbery":
-                return "purple"
-
-            case "Tresspassing":
+            case "CSO":
                 return "brown"
 
             default:
@@ -87,9 +165,8 @@ export default function Home() {
         }
     } 
 
-    // Fetch Pins from DB
-    const fetchPins = () => {
-        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
+    // DB Call Methods
+    const fetchPinsCall = () => {
         try {
             fetch(HOST + "/api/fetchpins", {
                 method: "GET",
@@ -110,9 +187,7 @@ export default function Home() {
                                 data.pins[i].pid
                             )]
                         }
-                        //Alert.alert("DEBUG", "Got Pins, Updating...")
                         setMarkers(serverPins)
-                        //Alert.alert("DEBUG", `${JSON.stringify(markers)}`)
                     } else {
                         Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
                     }
@@ -124,22 +199,56 @@ export default function Home() {
         
     }
 
-    const refreshPins = () => { 
-        fetchPins() 
+    const fetchWatchersCall = () => {
+        try {
+            fetch(HOST + "/api/fetchwatchers", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    uid: userData.id 
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        let serverWatchers: Pin[] = []
+                        for (let i = 0; i < data.pins.length; i++) {
+                            serverWatchers = [...serverWatchers, new Pin (
+                                {
+                                    latitude: data.pins[i].latitude,
+                                    longitude: data.pins[i].longitude,
+                                },
+                                data.pins[i].category,
+                                data.pins[i].pid
+                            )]
+                        }
+                        setWatchZones(serverWatchers)
+                    } else {
+                        Alert.alert("Watcher Fetch Error", "We ran into an error communicating with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", "An error occured populating the user map...(500)")
+        }
+        
     }
 
-    useEffect(() => {
-        fetchPins()
-        fetchUserData()
-    }, [])
+    const refreshPins = () => { 
+        fetchPinsCall() 
+        fetchWatchersCall()
+    }
 
-    const fetchUserData = async () => {
+    const fetchUserDataCall = async () => {
+        if (!userToken) Alert.alert("NO TOKEN DETECTED")
+
         try {
             fetch(HOST + "/api/me", {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    "authorization": userToken || "",
+                    "authorization": userToken ? userToken : "No Token",
                 }
             }).then((response) => {
                 response.json().then((data) => {
@@ -147,6 +256,7 @@ export default function Home() {
                         setUserData({
                             username: data.username, 
                             id: data.id,
+                            expotoken: data.expotoken
                         })
                     } else {
                         Alert.alert("User Fetch Error", "We ran into an error communicating with the server (500)")
@@ -158,11 +268,7 @@ export default function Home() {
         }
     }
 
-    // Fetch Pins from DB
-    const uploadPin = (category: string, coordinates: LatLng, author: number) => {
-        //Alert.alert("Debug", "Attempting GET to " + HOST + "/api/fetchpins")
-        //Alert.alert("Token", SecureStore.getItem("token") || "No token")
-
+    const uploadPinCall = (category: string, coordinates: LatLng, author: string) => {
         try {
             fetch(HOST + "/api/pushpin", {
                 method: "POST",
@@ -178,7 +284,7 @@ export default function Home() {
             }).then((response) => {
                 response.json().then((data) => {
                     if (response.status == 201) {
-                        fetchPins()
+                        Alert.alert("Pin Created!")
                     } else {
                         Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
                     }
@@ -186,10 +292,63 @@ export default function Home() {
             })
         } catch (e) {
             Alert.alert("Error", e?.toString())
+        } finally {
+            fetchPinsCall()
         }
-        
     }
 
+    const uploadWatcherCall = (category: string, coordinates: LatLng, author: string, radius: number) => {
+        try {
+            fetch(HOST + "/api/pushwatcher", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    category: category,
+                    longitude: coordinates.longitude,
+                    latitude: coordinates.latitude,
+                    author_id: author,
+                    radius: radius,
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 201) {
+                        fetchWatchersCall()
+                    } else {
+                        Alert.alert("Watcher Upload Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", e?.toString())
+        }   
+    }
+
+    const removeWatcherCall = async (pin_id: string) => {
+        try {
+            fetch(HOST + "/api/deletewatcher", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    pid: pin_id
+                })
+            }).then((response) => {
+                response.json().then((data) => {
+                    if (response.status == 200) {
+                        fetchWatchersCall()
+                    } else {
+                        Alert.alert("Watcher Delete Error", "We ran into an error with the server (500)")
+                    }
+                })
+            })
+        } catch (e) {
+            Alert.alert("Error", e?.toString())
+        }
+    }
+    
     const deletePin = (pid: string, uid: number) => {
         try {
             fetch(HOST + "/api/deletepin", {
@@ -198,26 +357,19 @@ export default function Home() {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({ pid, uid })
-        })
-        .then(response => {
-            response.json().then(data => {
-                if (response.status === 200) {
-                    fetchPins();
-                    Alert.alert("Pin deleted successfully");
-        } else {
-            Alert.alert("Error", data.message || "Failed to delete pin");
+            }).then(response => {
+              response.json().then(data => {
+                  if (response.status === 200) {
+                      fetchPins();
+                      Alert.alert("Pin deleted successfully");
+                  } else {
+                      Alert.alert("Error", data.message || "Failed to delete pin");
+                  }
+            });
+        } catch (e) {
+          Alert.alert("Pin Delete Error", e)   
         }
-      });
     });
-  } catch (e) {
-    Alert.alert("Error", e?.toString());
-  }
-};
-
-
-
-    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
-    const [IDTracker, setIDTracker] = useState<number>(0)
 
     // Method for hiding windows
     const hideAllPopups = () => {
@@ -227,44 +379,17 @@ export default function Home() {
         setShowChoiceMenu(false)
     }
 
-    // Reference to map to retrieve camera data
-    const mapRef = useRef<MapView>(null)
-    // Track user location
-    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
-    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
-
+    // Frontend handler functions
     const handleLogout = async () => {
         await signOut();
         router.replace("/login");
     };
 
-    // Track user location on load
-    useEffect(() => {
-        (async () => {
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Location access is required.');
-                return;
-            }
-            let location = await Location.getCurrentPositionAsync({});
-            const coords = {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
-            };
-            setUserLocation(coords);
-            setMapRegion({
-                ...coords,
-                latitudeDelta: 0.002,
-                longitudeDelta: 0.002
-            });
-            setIsLoadingLocation(false);
-        })();
-    }, []);
-
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
         const mapPoint = event.nativeEvent.coordinate
         setPinLocation(mapPoint)
+        setWatcherLocation(mapPoint)
 
         // Animate camera movement
         mapRef.current?.getCamera().then((cam) => {
@@ -282,7 +407,7 @@ export default function Home() {
         setShowChoiceMenu(true)
     }
 
-    const handleNewPin = async() => {
+    const handleCreatePin = async() => {
         // Create new pin object and assign ID
         if (pinCategory == "") {
             Alert.alert("Error", "Please select a category")
@@ -292,46 +417,66 @@ export default function Home() {
         const newPin = new Pin(pinLocation, pinCategory, IDTracker.toString())
         setIDTracker((prev) => prev + 1)
 
-        // Map will be re-rendered on pin creation.
-        // Mirror user's map and camera setup at time of creation
-        setMapRegion({
+        // Animate map to pin location using animateToRegion for smooth pan+zoom
+        const newRegion = {
             latitude: pinLocation.latitude,
             longitude: pinLocation.longitude,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-        })
+            latitudeDelta: mapRegion.latitudeDelta,
+            longitudeDelta: mapRegion.longitudeDelta,
+        };
+        mapRef.current?.animateToRegion(newRegion, 1500);
+        setMapRegion(newRegion);
 
-        mapRef.current?.getCamera().then((cam) => {
-            mapRef.current?.animateCamera({
-                center: pinLocation,
-                heading: cam.heading,
-                pitch: 0,
-                zoom: cam.zoom,
-                altitude: cam.altitude
-            }, { duration: 750 })
-        })
-
-        uploadPin(pinCategory, pinLocation, userData.id)
-
-        setEndorsed((prev) => [...prev, newPin.id])
-        newPin.validity = newPin.validity + 1
-
+        try {
+            uploadPinCall(pinCategory, pinLocation, userData.id)
+        } catch (e) {
+            Alert.alert("An error occured handling a new pin upload.")
+        }  finally {
+            setEndorsed((prev) => [...prev, newPin.id])
+            newPin.validity = newPin.validity + 1
+            hideAllPopups()
+            refreshPins()
+        }
         // Hide windows
+        
+    }
+
+    const handleCreateWatcher = async () => {
+        if (watcherCategory == "") {
+            Alert.alert("Error", "Please select a category")
+            return
+        } else if (userData.id == "") {
+            Alert.alert("Error", "Could not find user, please reauthenticate and try again.")
+            return
+        }
+
+        // Animate map to watcher location using animateToRegion for smooth pan+zoom
+        const newRegion = {
+            latitude: watcherLocation.latitude,
+            longitude: watcherLocation.longitude,
+            latitudeDelta: mapRegion.latitudeDelta,
+            longitudeDelta: mapRegion.longitudeDelta,
+        };
+        mapRef.current?.animateToRegion(newRegion, 1500);
+        setMapRegion(newRegion);
+
+        Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
+
+        uploadWatcherCall(watcherCategory, watcherLocation, userData.id, watcherRadius)
+
         hideAllPopups()
         refreshPins()
     }
 
-    const handleNewWatcher = async () => {
-        Alert.alert("Watch Zone Created!", `New watcher at ${pinLocation.longitude}, ${pinLocation.latitude}`)
-        hideAllPopups()
-    }
-
-    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number) => {
-        setInspected({
-            id: id,
-            coordinates: coordinates,
-            category: category,
-            validity: validity
+    const handleInspectData = (id: string, coordinates: LatLng, category: string, validity: number, isWatcher: Boolean) => {
+        setInspected({ 
+            pin: {
+                id: id,
+                coordinates: coordinates,
+                category: category,
+                validity: validity
+            },
+            isWatcher: isWatcher
         })
     }
 
@@ -345,11 +490,23 @@ export default function Home() {
                 pitch: 0,
                 zoom: cam.zoom,
                 altitude: cam.altitude
-            }, { duration: 750 })
+            }, { duration: 1500 })
         })
 
         hideAllPopups()
+
         setShowInspector(true)
+        
+    }
+
+    const handleDeleteWatcher = async (pin_id: string | undefined) => {
+        if (pin_id == undefined){
+            Alert.alert("Could not delete", "Pin ID is undefined.")
+            return
+        }
+        removeWatcherCall(pin_id)
+        hideAllPopups()
+        refreshPins()
     }
 
     const handleValidate = async (pin_id: string) => {
@@ -363,7 +520,7 @@ export default function Home() {
 
                 if (marker) {
                     marker.validity = marker.validity + 1
-                    setInspected(marker)
+                    setInspected({pin: marker, isWatcher: false})
                 }
                 
             } else {
@@ -383,7 +540,7 @@ export default function Home() {
 
                 if (marker) {
                     marker.validity = marker.validity - 1
-                    setInspected(marker)
+                    setInspected({pin: marker, isWatcher: false})
                 }
                 
             } else {
@@ -391,6 +548,60 @@ export default function Home() {
             }
         }
     }  
+
+    // Track user location on load
+    useEffect(() => {
+        (async () => {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location access is required.');
+                return;
+            }
+            let location = await Location.getCurrentPositionAsync({});
+            const coords = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            };
+            setUserLocation(coords);
+            const loadedRegion = {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002,
+            };
+            setMapRegion(loadedRegion);
+            setInitialRegion(loadedRegion);
+            setIsLoadingLocation(false);
+        })();
+    }, []);
+
+    useEffect(() => {
+        fetchPinsCall()
+        fetchWatchersCall()
+        fetchUserDataCall()
+    }, [])
+
+    useEffect(() => {
+        registerForPushNotificationsAsync().then(token => token && setExpoPushToken(token));
+
+        if (Platform.OS === 'android') {
+          Notifications.getNotificationChannelsAsync().then(value => setChannels(value ?? []));
+        }
+        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+          setNotification(notification);
+        });
+    
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+          console.log(response);
+        });
+    
+        return () => {
+          notificationListener.current &&
+            Notifications.removeNotificationSubscription(notificationListener.current);
+          responseListener.current &&
+            Notifications.removeNotificationSubscription(responseListener.current);
+        };
+    }, []);
 
     return (
         <>
@@ -400,208 +611,260 @@ export default function Home() {
             </View>
         ) : (
             <View style={styles.container}>
-                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                <View style={{ position: 'relative', alignItems: 'center', marginBottom: 35 , paddingTop: 10, bottom: 25, left: 5 }}>
                     <TouchableOpacity onPress={handleLogout}
-                    style={{ position: 'absolute', right: 150, top: 20 }}
+                    style={{ position: 'absolute', right: 160, top: 70 }}
                     >
                         <Text style={{ fontSize: 24}}>←</Text>
                     </TouchableOpacity>
                 </View>
-                <Text style={styles.title}>Welcome to PinPoint!</Text>
-                <MapView 
-                    key={markers.length}
-                    ref={mapRef}
-                    style={styles.map}
-                    initialRegion={mapRegion}
-                    onLongPress={(event) => {handleMapLongPress(event)}}
-                    onMarkerPress={(event) => {handleMarkerClick(event)}}
-                    onPress={() => hideAllPopups()}
-                    showsUserLocation={true}
-                >
-                {markers.map((data, index) => (
-                    <Marker 
-                        key={index} 
-                        pinColor={getPinColor(data.category)}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>Welcome to PinPoint!</Text>
+                  <MapView 
+                      key={markers.length}
+                      ref={mapRef}
+                      style={styles.map}
+                      initialRegion={mapRegion}
+                      onLongPress={(event) => {handleMapLongPress(event)}}
+                      onMarkerPress={(event) => {handleMarkerClick(event)}}
+                      onPress={() => hideAllPopups()}
+                      showsUserLocation={true}
+                  >
+                  {(showChoiceMenu || showCreator || showWatcherMenu) && (
+                      <Marker
+                          key="preview-pin"
+                          coordinate={pinLocation}
+                          pinColor="gray"
+                      />
+                  )}
+                  {showWatcherMenu && (
+                        <Circle
+                          key="preview-circle"
+                          center={pinLocation}
+                          radius={watcherRadius}
+                          strokeColor="rgba(0, 0, 255, 0.5)"
+                          fillColor="rgba(0, 0, 255, 0.2)"
+                      />
+                  )}
+                  {markers.map((data, index) => (
+                      <Marker 
+                          key={index} 
+                          pinColor={getPinColor(data.category)}
 
-                        //onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
-                        onPress={() => {
-                        handleInspectData(data.id, data.coordinates, data.category, data.validity);
-                        setSelectedPin(data);             // Save selected pin
-                        setShowChoiceMenu(true);          // Show popup menu
-                        }}
+                          //onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
+                          onPress={() => {
+                          handleInspectData(data.id, data.coordinates, data.category, data.validity);
+                          setSelectedPin(data);             // Save selected pin
+                          setShowChoiceMenu(true);          // Show popup menu
+                          }}
 
-                        coordinate={{
-                            latitude: data.coordinates.latitude, 
-                            longitude: data.coordinates.longitude
-                        }}
-                    />
-                ))}
-                </MapView>
-                {showInspector && 
-                    <View style={styles.popup}>
-                        <Text style={styles.popupHeader}>Pin Inspection</Text>
-                        <Text style={styles.popupText}>ID: {inspected?.id}</Text>
-                        <Text style={styles.popupText}>Category: {inspected?.category}</Text>
-
-                        <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
-
-                        { inspected && endorsed.includes(inspected.id) &&
-                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
-                        }
-                       
-                        <Button
-                            title="Delete Pin"
-                            color="red"
-                            onPress={() => {
-                                if (!inspected) return;
-                                    deletePin(inspected.id, userData.id);
-                                    hideAllPopups();
-                            }}
+                          coordinate={{
+                              latitude: data.coordinates.latitude, 
+                              longitude: data.coordinates.longitude
+                          }}
+                      />
+                  ))}
+                  {watchZones.map((data, index) => (
+                        <Marker 
+                            key={index} 
+                            // pinColor={getPinColor(data.category)}
+                            onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, true)}} 
+                            coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                         />
+                  ))}
+                  </MapView>
 
-                        <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                    </View>
-                }
-                {showCreator && 
-                    <View style={styles.popup}>
-                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                            <TouchableOpacity onPress={() => {
-                                hideAllPopups();
-                                setShowChoiceMenu(true);
-                            }}
-                            style={{ position: 'absolute', left: 0 }}
-                            >
-                                <Text style={{ fontSize: 24}}>←</Text>
-                            </TouchableOpacity>
-                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
-                        </View>
-                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                        <Dropdown
-                            style={styles.dropdown}
-                            placeholderStyle={styles.popupText}
-                            selectedTextStyle={styles.popupText}
-                            inputSearchStyle={styles.popupText}
-                            data={public_category}
-                            maxHeight={300}
-                            labelField="label"
-                            valueField="value"
-                            placeholder={'Select Category...'}
-                            searchPlaceholder="Search..."
-                            value={pinCategory}
-                            search={false}
-                            onChange={item => {
-                              setPinCategory(item.value);
-                            }}
-                            dropdownPosition="top"
-                        />
-                        <View style={
-                            {
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                                gap: 20,
-                                marginTop: 10,
-                            }
-                        }>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewPin}>
-                                <Text style={styles.buttonText}>Create</Text>
-                            </Pressable>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
-                                <Text style={styles.buttonText}>Close</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                }
-                {showChoiceMenu &&
-                    <View style={styles.popup}>
-                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                            <Text style={styles.popupHeader}>What would you like?</Text>
-                            <Button title="Add Pin" onPress={() => {
-                                hideAllPopups()
-                                setShowCreator(true)
-                                }}/>
-                            <Button title="Add Watch Zone" onPress={() => {
-                                hideAllPopups()
-                                setShowWatcherMenu(true)
-                                }}/>
-
-                            <Button title="Close" onPress={() => {hideAllPopups()}}/>
-                        </View>
-                    </View>
-                }
-                {showWatcherMenu && 
-                    <View style={styles.popup}>
-                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                            <TouchableOpacity onPress={() => {
-                                hideAllPopups()
-                                setShowChoiceMenu(true);
-                            }}
-                            style={{ position: 'absolute', left: 0 }}
-                            >
-                                <Text style={{ fontSize: 24}}>←</Text>
-                            </TouchableOpacity>
-                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
-                        </View>
-                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                        <Dropdown
-                            style={styles.dropdown}
-                            placeholderStyle={styles.popupText}
-                            selectedTextStyle={styles.popupText}
-                            inputSearchStyle={styles.popupText}
-                            data={private_category}
-                            maxHeight={300}
-                            labelField="label"
-                            valueField="value"
-                            placeholder={'Select Category...'}
-                            searchPlaceholder="Search..."
-                            value={pinCategory}
-                            search={false}
-                            onChange={item => {
-                              setPinCategory(item.value);
-                            }}
-                            dropdownPosition="top"
-                        />
-                        <View style={
-                            {
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                                gap: 20,
-                                marginTop: 10,
-                            }
-                        }>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
-                                <Text style={styles.buttonText}>Create</Text>
-                            </Pressable>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
-                                <Text style={styles.buttonText}>Close</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                }
-                <View style={
-                    {
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        gap: 30,
-                        marginTop: 10,
-                    }
-                }>
-                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={refreshPins}>
-                        <Text style={styles.buttonText}>Reload</Text>
-                    </Pressable>
-                    <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={() => {
-                        if (userLocation && mapRef.current) {
-                            mapRef.current.animateCamera({
-                                center: userLocation,
-                                zoom: 15
-                            }, { duration: 750 });
+                  <Pressable
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 10,
+                        backgroundColor: 'white',
+                        padding: 8,
+                        borderRadius: 20,
+                        elevation: 4,
+                        zIndex: 1000,
+                      }}
+                      onPress={() => {
+                        if (initialRegion) {
+                          mapRef.current?.animateToRegion(initialRegion, 1000);
+                          setMapRegion(initialRegion);
                         } else {
-                            Alert.alert("Location not available");
+                          Alert.alert("Still loading initial view");
                         }
-                    }}>
-                        <Text style={styles.buttonText}>Center</Text>
-                    </Pressable>
+                      }}
+                    >
+                      <Ionicons name="locate" size={24} color="black" />
+                  </Pressable>
+
+                  {showInspector && 
+                     <View style={styles.popup}>
+                         <Text style={styles.popupHeader}>{ inspected?.isWatcher ? "Watch Zone" : "Report"}</Text>
+                         <Text style={styles.popupText}>ID: {inspected?.pin.id}</Text>
+                         <Text style={styles.popupText}>Category: {inspected?.pin.category}</Text>
+                         { inspected?.isWatcher ? 
+                             <Button title={`Delete Zone`} onPress={() => {handleDeleteWatcher(inspected?.pin.id)}}></Button> :
+                             <Button title={`Confirmations ${inspected?.pin.validity}`} onPress={() => {handleValidate(inspected?.pin.id || "")}}></Button>
+                         }
+                         { inspected && endorsed.includes(inspected.pin.id) &&
+                             <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.pin.id)}}></Button>
+                         }
+                         <Button
+                             title="Delete Pin"
+                             color="red"
+                             onPress={() => {
+                                 if (!inspected) return;
+                                 deletePin(inspected.id, userData.id);
+                                 hideAllPopups();
+                             }}
+                         />
+                         <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                     </View>
+                  }
+                  {showChoiceMenu &&
+                      <View style={styles.popup}>
+                          <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                              <Text style={styles.popupHeader}>What would you like?</Text>
+                              <Button title="Add Pin" onPress={() => {
+                                  hideAllPopups()
+                                  setShowCreator(true)
+                                  }}/>
+                              <Button title="Add Watch Zone" onPress={() => {
+                                  hideAllPopups()
+                                  setShowWatcherMenu(true)
+                                  }}/>
+                              <Button title="Close" onPress={() => {hideAllPopups()}}/>
+                          </View>
+                      </View>
+                  }
+                  {showCreator && 
+                      <View style={styles.popup}>
+                          <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                              <TouchableOpacity onPress={() => {
+                                  hideAllPopups();
+                                  setShowChoiceMenu(true);
+                              }}
+                              style={{ position: 'absolute', left: 0 }}
+                              >
+                                  <Text style={{ fontSize: 24}}>←</Text>
+                              </TouchableOpacity>
+                              <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
+                          </View>
+                          <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                          <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                          <Dropdown
+                              style={styles.dropdown}
+                              placeholderStyle={styles.popupText}
+                              selectedTextStyle={styles.popupText}
+                              inputSearchStyle={styles.popupText}
+                              data={public_category}
+                              maxHeight={300}
+                              labelField="label"
+                              valueField="value"
+                              placeholder={'Select Category...'}
+                              searchPlaceholder="Search..."
+                              value={pinCategory}
+                              search={false}
+                              onChange={item => {
+                                setPinCategory(item.value);
+                              }}
+                              dropdownPosition="top"
+                          />
+                          <View style={
+                              {
+                                  flexDirection: "row",
+                                  justifyContent: "space-between",
+                                  gap: 20,
+                                  marginTop: 10,
+                              }
+                          }>
+                              <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreatePin}>
+                                  <Text style={styles.buttonText}>Create</Text>
+                              </Pressable>
+                              <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                  <Text style={styles.buttonText}>Close</Text>
+                              </Pressable>
+                          </View>
+                      </View>
+                  }
+                  {showWatcherMenu && 
+                      <View style={styles.popup}>
+                          <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                              <TouchableOpacity onPress={() => {
+                                  hideAllPopups()
+                                  setShowChoiceMenu(true);
+                              }}
+                              style={{ position: 'absolute', left: 0 }}
+                              >
+                                  <Text style={{ fontSize: 24}}>←</Text>
+                              </TouchableOpacity>
+                              <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Watch Point</Text>
+                          </View>
+                          <ScrollView style={{flex: 1}}>
+                              <View style={{height: 650}}>
+                                  <Text style={styles.popupText}>{watcherLocation.latitude}, </Text>
+                                  <Text style={styles.popupText}>{watcherLocation.longitude}, </Text>
+                                  <Dropdown
+                                      style={styles.dropdown}
+                                      placeholderStyle={styles.popupText}
+                                      selectedTextStyle={styles.popupText}
+                                      inputSearchStyle={styles.popupText}
+                                      data={private_category}
+                                      maxHeight={300}
+                                      labelField="label"
+                                      valueField="value"
+                                      placeholder={'Select Category...'}
+                                      searchPlaceholder="Search..."
+                                      value={watcherCategory}
+                                      search={false}
+                                      onChange={item => {
+                                      setWatcherCategory(item.value);
+                                      }}
+                                      dropdownPosition="top"
+                                  />
+                                  <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                                      <Text style={styles.popupText}>Radius: {watcherRadius} meters</Text>
+                                      <Slider
+                                          style={{ width: 250, height: 40 }}
+                                          minimumValue={5}
+                                          maximumValue={100}
+                                          step={5}
+                                          value={watcherRadius}
+                                          onValueChange={(value: number) => setWatcherRadius(value)}
+                                      />
+                                  </View>
+                                  <View style={
+                                      {
+                                          flexDirection: "row",
+                                          justifyContent: "space-between",
+                                          gap: 20,
+                                          marginTop: 10,
+                                      }
+                                  }>
+                                      <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreateWatcher}>
+                                          <Text style={styles.buttonText}>Create</Text>
+                                      </Pressable>
+                                      <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                          <Text style={styles.buttonText}>Close</Text>
+                                      </Pressable>
+                                  </View>
+                              </View>
+                          </ScrollView>
+
+                      </View>
+                  }
+                  <View style={{
+                      position: 'absolute',
+                      top: 590,
+                      left: 0,
+                      right: 0,
+                      alignItems: 'center',
+                      paddingVertical: 25,
+                  }}>
+                      <Pressable style={({ pressed }) => [styles.mainButton, pressed && styles.pressed]} onPress={refreshPins}>
+                          <Text style={styles.buttonText}>Reload</Text>
+                      </Pressable>
+                  </View>
                 </View>
             </View>
         )}

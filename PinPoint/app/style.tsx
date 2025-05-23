@@ -45,7 +45,7 @@ const homeStyle = StyleSheet.create({
         flex: 1,
         position: "absolute",
         borderRadius: 10,
-        top: Dimensions.get('window').height * 0.65,
+        top: Dimensions.get('window').height * 0.55,
         left: 0,
         zIndex: 9999,
         elevation: 10,

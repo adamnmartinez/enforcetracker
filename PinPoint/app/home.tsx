@@ -349,27 +349,28 @@ export default function Home() {
         }
     }
     
-    const deletePin = (pid: string, uid: number) => {
+    const deletePinCall = (pid: string, uid: string) => {
         try {
             fetch(HOST + "/api/deletepin", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ pid, uid })
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ pid, uid })
             }).then(response => {
               response.json().then(data => {
                   if (response.status === 200) {
-                      fetchPins();
+                      fetchPinsCall();
                       Alert.alert("Pin deleted successfully");
                   } else {
                       Alert.alert("Error", data.message || "Failed to delete pin");
                   }
-            });
+                });
+            })
         } catch (e) {
-          Alert.alert("Pin Delete Error", e)   
+            Alert.alert("Pin Delete Error", e?.toString())
         }
-    });
+    };
 
     // Method for hiding windows
     const hideAllPopups = () => {
@@ -618,8 +619,8 @@ export default function Home() {
                         <Text style={{ fontSize: 24}}>←</Text>
                     </TouchableOpacity>
                 </View>
+                <Text style={styles.title}>Welcome to PinPoint!</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>Welcome to PinPoint!</Text>
                   <MapView 
                       key={markers.length}
                       ref={mapRef}
@@ -653,9 +654,8 @@ export default function Home() {
 
                           //onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity)}} 
                           onPress={() => {
-                          handleInspectData(data.id, data.coordinates, data.category, data.validity);
-                          setSelectedPin(data);             // Save selected pin
-                          setShowChoiceMenu(true);          // Show popup menu
+                            handleInspectData(data.id, data.coordinates, data.category, data.validity, false);
+                            setShowChoiceMenu(true);          // Show popup menu
                           }}
 
                           coordinate={{
@@ -714,7 +714,7 @@ export default function Home() {
                              color="red"
                              onPress={() => {
                                  if (!inspected) return;
-                                 deletePin(inspected.id, userData.id);
+                                 deletePinCall(inspected.pin.id, userData.id);
                                  hideAllPopups();
                              }}
                          />
@@ -750,41 +750,45 @@ export default function Home() {
                               </TouchableOpacity>
                               <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
                           </View>
-                          <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                          <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                          <Dropdown
-                              style={styles.dropdown}
-                              placeholderStyle={styles.popupText}
-                              selectedTextStyle={styles.popupText}
-                              inputSearchStyle={styles.popupText}
-                              data={public_category}
-                              maxHeight={300}
-                              labelField="label"
-                              valueField="value"
-                              placeholder={'Select Category...'}
-                              searchPlaceholder="Search..."
-                              value={pinCategory}
-                              search={false}
-                              onChange={item => {
-                                setPinCategory(item.value);
-                              }}
-                              dropdownPosition="top"
-                          />
-                          <View style={
-                              {
-                                  flexDirection: "row",
-                                  justifyContent: "space-between",
-                                  gap: 20,
-                                  marginTop: 10,
-                              }
-                          }>
-                              <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreatePin}>
-                                  <Text style={styles.buttonText}>Create</Text>
-                              </Pressable>
-                              <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
-                                  <Text style={styles.buttonText}>Close</Text>
-                              </Pressable>
-                          </View>
+                          <ScrollView style={{flex: 1}}>
+                            <View style={{height: 650}}>
+                                <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                                <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                                <Dropdown
+                                    style={styles.dropdown}
+                                    placeholderStyle={styles.popupText}
+                                    selectedTextStyle={styles.popupText}
+                                    inputSearchStyle={styles.popupText}
+                                    data={public_category}
+                                    maxHeight={300}
+                                    labelField="label"
+                                    valueField="value"
+                                    placeholder={'Select Category...'}
+                                    searchPlaceholder="Search..."
+                                    value={pinCategory}
+                                    search={false}
+                                    onChange={item => {
+                                        setPinCategory(item.value);
+                                    }}
+                                    dropdownPosition="top"
+                                />
+                                <View style={
+                                    {
+                                        flexDirection: "row",
+                                        justifyContent: "space-between",
+                                        gap: 20,
+                                        marginTop: 10,
+                                    }
+                                }>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreatePin}>
+                                        <Text style={styles.buttonText}>Create</Text>
+                                    </Pressable>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                        <Text style={styles.buttonText}>Close</Text>
+                                    </Pressable>
+                                </View>
+                            </View>
+                          </ScrollView>
                       </View>
                   }
                   {showWatcherMenu && 

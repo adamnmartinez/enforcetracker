@@ -3,6 +3,7 @@ import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { authStyle, placeholderColor } from "./style";
+import {addEntryValidity} from "./validity";
 import { HOST } from "./server";
 
 export default function Signup() {
@@ -25,6 +26,7 @@ export default function Signup() {
             const data = await response.json();
             if (response.status == 201) {
                 await signUp(data.token);
+		addEntryValidity(data.uid);
                 router.replace("/home");
             } else if (response.status == 400) {
                 Alert.alert("Signup Failed", data.message || "You must fill in all fields.");

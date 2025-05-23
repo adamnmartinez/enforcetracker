@@ -1,8 +1,35 @@
 import { useRouter } from "expo-router";
 import { HOST } from "./server";
 
-export function endorsePin(user: string, pid: string){
+export function addEntryValidity(user: string){
   try{
+    fetch(HOST + "/tasks/addUser", {
+      method: "POST",
+      headers:{
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user: user,
+      })
+    }).then((response) =>{
+      response.json().then((data)=>{
+        if (response.status == 201){
+          console.log("Success")
+        }else{
+          console.log("Error")
+        }
+      })
+    })
+  }catch(e){
+    console.log(e)
+  }
+}
+
+export function endorsePin(user: string, pid: string){
+   console.log("In endorsePin")
+   console.log(user, pid)
+   console.log("endorsePin end")
+   try{
     fetch(HOST + "/api/validates/add", {
       method: "POST",
       headers: {
@@ -75,4 +102,4 @@ export function userEndorsed(pid: string){
   }
 }
 
-export {userEndorsed, unendorsePin, endorsePin, endorsePin}
+export {addEntryValidity, userEndorsed, unendorsePin, endorsePin}

@@ -30,6 +30,7 @@ import { HOST } from "./server";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import { endorsePin, unendorsePin } from "./validity"
 
 function handleRegistrationError(errorMessage: string) {
   Alert.alert("Notification Error", errorMessage);
@@ -637,6 +638,7 @@ export default function Home() {
 
         if (marker) {
           marker.validity = marker.validity + 1;
+          endorsePin(userData.id, pin_id);
           setInspected(marker);
         }
       } else {
@@ -656,6 +658,7 @@ export default function Home() {
 
         if (marker) {
           marker.validity = marker.validity - 1;
+          unendorsePin(userData.id, pin_id);
           setInspected(marker);
         }
       } else {

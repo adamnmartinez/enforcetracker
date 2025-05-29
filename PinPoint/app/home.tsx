@@ -195,49 +195,104 @@ export default function Home() {
     }
   };
 
-  // DB Call Methods
-  const fetchPinsCall = () => {
+  const fetchPinValidity = async (pin_id: string) => {
+    let score = 0
     try {
-      fetch(HOST + "/api/fetchpins", {
+      const response = await fetch(HOST + "/api/validates/getscore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pin: pin_id,
+        })
+      })
+      
+      const data = await response.json()
+
+      if (response.status == 200) {
+        score = data.score
+        console.log(`${pin_id} score of ${score}`)
+      }
+    } catch (e) {
+      console.log("An error occured determining if the pin was validated or not...")
+      console.error(e)
+    } finally {
+      markers.filter((pin) => pin.id == pin_id)[0].validity = score
+      refreshPins()
+    }
+  }
+
+  const fetchValidatedCall = async (user_id: string) => {
+    console.log(`Getting validation data for ${user_id}`)
+    let validated: string[] = []
+    try {
+      const response = await fetch(HOST + "/api/validates/getvalidated", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user: user_id,
+        })
+      })
+      
+      const data = await response.json()
+
+      if (response.status == 200) {
+        validated = data.validated
+      }
+    } catch (e) {
+      console.log("An error occured determining if the pin was validated or not...")
+      console.error(e)
+    } finally {
+      setEndorsed(validated)
+    }
+  }
+
+  const fetchPinsCall = async () => {
+    let serverPins: Pin[] = []
+    try {
+      const response = await fetch(HOST + "/api/fetchpins", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 200) {
-            let serverPins: Pin[] = [];
-            for (let i = 0; i < data.pins.length; i++) {
-              serverPins = [
-                ...serverPins,
-                new Pin(
-                  {
-                    latitude: data.pins[i].latitude,
-                    longitude: data.pins[i].longitude,
-                  },
-                  data.pins[i].category,
-                  data.pins[i].pid,
-                  data.pins[i].uid,
-                ),
-              ];
-            }
-            setMarkers(serverPins);
-          } else {
-            Alert.alert(
-              "Pin Fetch Error",
-              "We ran into an error communicating with the server (500)",
-            );
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+          for (let i = 0; i < data.pins.length; i++) {
+            serverPins = [
+              ...serverPins,
+              new Pin(
+                {
+                  latitude: data.pins[i].latitude,
+                  longitude: data.pins[i].longitude,
+                },
+                data.pins[i].category,
+                data.pins[i].pid,
+                data.pins[i].uid,
+              ),
+            ];
           }
-        });
-      });
+      } else {
+        Alert.alert(
+          "Pin Fetch Error",
+          "We ran into an error communicating with the server (500)",
+        );
+      }
     } catch (e) {
       Alert.alert("Error", "An error occured populating the user map...(500)");
+    } finally {
+      setMarkers(serverPins)
     }
   };
 
-  const fetchWatchersCall = () => {
+  const fetchWatchersCall = async () => {
     try {
-      fetch(HOST + "/api/fetchwatchers", {
+      const response = await fetch(HOST + "/api/fetchwatchers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -245,82 +300,86 @@ export default function Home() {
         body: JSON.stringify({
           uid: userData.id,
         }),
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 200) {
-            let serverWatchers: Watcher[] = [];
-            for (let i = 0; i < data.pins.length; i++) {
-              serverWatchers = [
-                ...serverWatchers,
-                new Watcher(
-                  {
-                    latitude: data.pins[i].latitude,
-                    longitude: data.pins[i].longitude,
-                  },
-                  data.pins[i].category,
-                  data.pins[i].pid,
-                  data.pins[i].uid,
-                  data.pins[i].radius,
-                ),
-              ];
-            }
-            setWatchZones(serverWatchers);
-          } else {
-            Alert.alert(
-              "Watcher Fetch Error",
-              "We ran into an error communicating with the server (500)",
-            );
-          }
-        });
-      });
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+        let serverWatchers: Watcher[] = [];
+        for (let i = 0; i < data.pins.length; i++) {
+          serverWatchers = [
+            ...serverWatchers,
+            new Watcher(
+              {
+                latitude: data.pins[i].latitude,
+                longitude: data.pins[i].longitude,
+              },
+              data.pins[i].category,
+              data.pins[i].pid,
+              data.pins[i].uid,
+              data.pins[i].radius,
+            ),
+          ];
+        }
+        await setWatchZones(serverWatchers);
+      } else {
+        Alert.alert(
+          "Watcher Fetch Error",
+          "We ran into an error communicating with the server (500)",
+        );
+      }
+
     } catch (e) {
       Alert.alert("Error", "An error occured populating the user map...(500)");
     }
   };
 
   const refreshPins = () => {
-    fetchPinsCall();
-    fetchWatchersCall();
+    fetchPinsCall()
+    fetchWatchersCall()
   };
 
   const fetchUserDataCall = async () => {
     if (!userToken) Alert.alert("NO TOKEN DETECTED");
-
     try {
-      fetch(HOST + "/api/me", {
+      const response = await fetch(HOST + "/api/me", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
           authorization: userToken ? userToken : "No Token",
         },
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 200) {
-            setUserData({
-              username: data.username,
-              id: data.id,
-              expotoken: data.expotoken,
-            });
-          } else {
-            Alert.alert(
-              "User Fetch Error",
-              "We ran into an error communicating with the server (500)",
-            );
-          }
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+        setUserData({
+          username: data.username,
+          id: data.id,
+          expotoken: data.expotoken,
         });
-      });
+      } else {
+        Alert.alert("Error", data.message || "Failed to get user data (500)");
+      }
+
     } catch (e) {
-      Alert.alert("Error", "An error occured getting user data...(500)");
+      Alert.alert("Error", "An error occured getting user data... (500)")
     }
   };
 
-  const uploadPinCall = (
+  useEffect(() => {
+    if (userData.id) {
+      fetchValidatedCall(userData.id)
+    }
+  }, [userData.id])
+
+  const uploadPinCall = async (
     category: string,
     coordinates: LatLng,
     author: string,
   ) => {
     try {
-      fetch(HOST + "/api/pushpin", {
+      const response = await fetch(HOST + "/api/pushpin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -331,18 +390,15 @@ export default function Home() {
           latitude: coordinates.latitude,
           author_id: author,
         }),
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 201) {
-            Alert.alert("Pin Created!");
-          } else {
-            Alert.alert(
-              "Pin Upload Error",
-              "We ran into an error with the server (500)",
-            );
-          }
-        });
-      });
+      })
+      const data = await response.json()
+
+      if (response.status == 201) {
+        Alert.alert("Pin Created!")
+      } else {
+        Alert.alert("Error", data.message || "Failed to upload pin");
+      }
+      
     } catch (e) {
       Alert.alert("Error", e?.toString());
     } finally {
@@ -350,14 +406,14 @@ export default function Home() {
     }
   };
 
-  const uploadWatcherCall = (
+  const uploadWatcherCall = async (
     category: string,
     coordinates: LatLng,
     author: string,
     radius: number,
   ) => {
     try {
-      fetch(HOST + "/api/pushwatcher", {
+      const response = await fetch(HOST + "/api/pushwatcher", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -369,26 +425,26 @@ export default function Home() {
           author_id: author,
           radius: radius,
         }),
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 201) {
-            fetchWatchersCall();
-          } else {
-            Alert.alert(
-              "Watcher Upload Error",
-              "We ran into an error with the server (500)",
-            );
-          }
-        });
-      });
+      })
+
+      const data = await response.json()
+
+      if (response.status == 201) {
+        fetchWatchersCall();
+      } else {
+        Alert.alert("Error", data.message || "Failed to upload watcher");
+      }
+
     } catch (e) {
       Alert.alert("Error", e?.toString());
+    } finally {
+      fetchWatchersCall()
     }
   };
 
   const deleteWatcherCall = async (pin_id: string) => {
     try {
-      fetch(HOST + "/api/deletewatcher", {
+      const response = await fetch(HOST + "/api/deletewatcher", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -396,42 +452,44 @@ export default function Home() {
         body: JSON.stringify({
           pid: pin_id,
         }),
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status == 200) {
-            fetchWatchersCall();
-          } else {
-            Alert.alert(
-              "Watcher Delete Error",
-              "We ran into an error with the server (500)",
-            );
-          }
-        });
-      });
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+        console.log("Delete Watcher Success")
+      } else {
+        Alert.alert("Error", data.message || "Failed to delete watcher");
+      }
+
     } catch (e) {
       Alert.alert("Error", e?.toString());
+    } finally {
+      fetchWatchersCall();
     }
   };
 
-  const deletePinCall = (pid: string, uid: string) => {
+  const deletePinCall = async (pid: string, uid: string) => {
     try {
-      fetch(HOST + "/api/deletepin", {
+      const response = await fetch(HOST + "/api/deletepin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ pid, uid }),
-      }).then((response) => {
-        response.json().then((data) => {
-          if (response.status === 200) {
-            fetchPinsCall();
-          } else {
-            Alert.alert("Error", data.message || "Failed to delete pin");
-          }
-        });
-      });
+      })
+
+      const data = await response.json()
+
+      if (response.status === 200) {
+        console.log("Delete Pin Success")
+      } else {
+        Alert.alert("Error", data.message || "Failed to delete pin");
+      }
     } catch (e) {
       Alert.alert("Pin Delete Error", e?.toString());
+    } finally {
+      fetchPinsCall()
     }
   };
 
@@ -542,8 +600,25 @@ export default function Home() {
     refreshPins();
   };
 
-  const handleInspectData = (inspectTarget: Pin | Watcher) => {
-    setInspected(inspectTarget);
+  const handleInspectData = async (inspectTarget: Pin | Watcher) => {
+    if (inspectTarget instanceof Pin) {
+      try {
+        await fetchPinValidity(inspectTarget.id)
+        await setMapRegion({
+          latitude: inspectTarget.coordinates.latitude - 0.0001,
+          longitude: inspectTarget.coordinates.longitude,
+          latitudeDelta: 0.002,
+          longitudeDelta: 0.002,
+        })
+        await setInspected(inspectTarget)
+      } catch (e) {
+        console.log("An error occured inspecting a pin...")
+      } finally {
+        setShowInspector(true)
+      }
+    } else {
+      setInspected(inspectTarget);
+    }
   };
 
   const handleMarkerClick = async (event: MarkerPressEvent) => {
@@ -567,7 +642,7 @@ export default function Home() {
 
     hideAllPopups();
 
-    setShowInspector(true);
+    //setShowInspector(true);
   };
 
   const handleDeleteWatcher = async (pin_id: string | undefined) => {
@@ -630,17 +705,23 @@ export default function Home() {
   const handleValidate = async (pin_id: string) => {
     if (pin_id !== "") {
       if (!endorsed.includes(pin_id)) {
-        setEndorsed((prev) => [...prev, pin_id]);
+        try {
+          setShowInspector(false)
+          setEndorsed((prev) => [...prev, pin_id]);
 
-        const marker = markers.find((obj) => {
-          return obj.id == pin_id;
-        });
+          const marker = markers.find((obj) => {
+            return obj.id == pin_id;
+          });
 
-        if (marker) {
-          marker.validity = marker.validity + 1;
-          endorsePin(userData.id, pin_id);
-          setInspected(marker);
-        }
+          if (marker) {
+            await endorsePin(userData.id, pin_id);
+            setInspected(marker);
+          }
+        } catch (e) {
+          console.log(e)
+        } finally {
+          setShowInspector(true)
+        }        
       } else {
         Alert.alert("You have already confirmed this report!");
       }
@@ -650,22 +731,39 @@ export default function Home() {
   const handleUnvalidate = async (pin_id: string) => {
     if (pin_id !== "") {
       if (endorsed.includes(pin_id)) {
-        setEndorsed((prev) => prev.filter((item) => item != pin_id));
+        try {
+          setShowInspector(false)
+          setEndorsed((prev) => prev.filter((item) => item != pin_id));
 
-        const marker = markers.find((obj) => {
-          return obj.id == pin_id;
-        });
+          const marker = markers.find((obj) => {
+            return obj.id == pin_id;
+          });
 
-        if (marker) {
-          marker.validity = marker.validity - 1;
-          unendorsePin(userData.id, pin_id);
-          setInspected(marker);
+          if (marker) {
+            marker.validity = marker.validity - 1;
+            await unendorsePin(userData.id, pin_id);
+            setInspected(marker);
+          }
+
+          fetchPinValidity(pin_id)
+
+        } catch (e) {
+          console.log(e)
+        } finally {
+          setShowInspector(true)
         }
+        
       } else {
         Alert.alert("You cannot unconfirm a report you have not confirmed!");
       }
     }
   };
+
+  // When the user's endorsements change, or when the user inspects a new pin, we want to get an accurate count of the pin's endorsments.
+  useEffect(() => {
+    if (inspected) fetchPinValidity(inspected.id)
+  }, [endorsed, inspected])
+
 
   // Track user location on load
   useEffect(() => {
@@ -694,7 +792,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchPinsCall();
+    fetchPinsCall()
     fetchWatchersCall();
     fetchUserDataCall();
   }, []);
@@ -733,7 +831,7 @@ export default function Home() {
     <>
       {isLoadingLocation ? (
         <View style={styles.container}>
-          <Text style={styles.title}>Loading location...</Text>
+          <Text style={styles.title}>Loading...</Text>
         </View>
       ) : (
         <View style={styles.container}>

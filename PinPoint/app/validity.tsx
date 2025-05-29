@@ -1,7 +1,6 @@
-import { useRouter } from "expo-router";
 import { HOST } from "./server";
 
-export function addEntryValidity(user: string){
+const addEntryValidity = (user: string) => {
   try{
     fetch(HOST + "/api/validates/addUser", {
       method: "POST",
@@ -25,9 +24,9 @@ export function addEntryValidity(user: string){
   }
 }
 
-export function endorsePin(user: string, pid: string){
+const endorsePin = async (user: string, pid: string) => {
    try{
-    fetch(HOST + "/api/validates/add", {
+    const response = await fetch(HOST + "/api/validates/add", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,24 +35,22 @@ export function endorsePin(user: string, pid: string){
         user: user,
         pin:  pid,
       })
-    }).then((response) => {
-      response.json().then((data) => {
-        if (response.status == 201) {
-          console.log("Success")
-        }else{
-          console.log("Internal Error")
-        }
-      })
     })
-  }catch (e){
+
+    if (response.status == 200) {
+      console.log("Endorse Success")
+    }else{
+      console.log("Internal Error")
+    }
+  } catch (e){
     console.log("Unable to connect")
     console.log(e)
   }
 }
 
-export function unendorsePin(user: string, pid: string){
+const unendorsePin = async (user: string, pid: string) => {
   try{
-    fetch(HOST + "/api/validates/delete", {
+    const response = await fetch(HOST + "/api/validates/delete", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -62,38 +59,40 @@ export function unendorsePin(user: string, pid: string){
         user: user,
         pin:  pid,
       })
-    }).then((response) => {
-      response.json().then((data) => {
-        if (response.status == 201) {
-          console.log("Success")
-        }else{
-          console.log("Internal Error")
-        }
-      })
     })
+    
+    if (response.status == 200) {
+      console.log("Unendorse Success")
+    }else{
+      console.log("Internal Error")
+    }
   }catch (e){
     console.log("Unable to connect")
     console.log(e)
   }
 }
 
-export function userEndorsed(pid: string){
-  try{
-    fetch(HOST + "/api/validates/" + pid, {
-      method: "GET",
+const userEndorsed = (uid: string, pid: string) => {
+  try {
+    fetch(HOST + "/api/validates/isvalidated", {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
-      }
+      },
+      body: JSON.stringify({
+        user: uid,
+        pin: pid
+      })
     }).then((response) => {
       response.json().then((data) => {
         if (response.status == 200) {
-          console.log("Success")
-        }else{
+          return data.validated
+        } else {
           console.log("Internal Error")
         }
       })
     })
-  }catch (e){
+  } catch (e){
     console.log("Unable to connect")
     console.log(e)
   }

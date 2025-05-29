@@ -14,7 +14,7 @@ export class Pin {
         }
         this.category = category;
         this.id = id;
-        this.validity = 0;
+        this.validity = -1;
         this.author = author
     }
 }

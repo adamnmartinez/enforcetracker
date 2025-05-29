@@ -26,15 +26,16 @@ export default function Signup() {
             const data = await response.json();
             if (response.status == 201) {
                 await signUp(data.token);
-		addEntryValidity(data.uid);
-                router.replace("/home");
-            } else if (response.status == 400) {
-                Alert.alert("Signup Failed", data.message || "You must fill in all fields.");
-            } else if (response.status == 409) {
-                Alert.alert("Signup Failed", data.message || "A user with that name already exists.");
-            } else {
-                Alert.alert("Signup Failed", data.message || "Error creating account");
             }
+            // addEntryValidity(data.uid);
+            //         router.replace("/home");
+            //     } else if (response.status == 400) {
+            //         Alert.alert("Signup Failed", data.message || "You must fill in all fields.");
+            //     } else if (response.status == 409) {
+            //         Alert.alert("Signup Failed", data.message || "A user with that name already exists.");
+            //     } else {
+            //         Alert.alert("Signup Failed", data.message || "Error creating account");
+            //     }
         } catch (error) {
             Alert.alert("Network Error", "An error occurred. Please try again.");
         }

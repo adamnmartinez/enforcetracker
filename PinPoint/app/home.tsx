@@ -21,6 +21,8 @@ export default function Home() {
     
     // State to track which zone is selected for viewing radius
     const [selectedZone, setSelectedZone] = useState<{ coordinates: LatLng; radius: number } | null>(null);
+    // Track if a marker was just pressed to prevent map tap from clearing selection
+    const [markerPressed, setMarkerPressed] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [showWatchZonesMenu, setShowWatchZonesMenu] = useState(false);
     
@@ -479,11 +481,11 @@ export default function Home() {
     }
 
     const handleMarkerClick = async (event: MarkerPressEvent, radius?: number) => {
+        if ( radius ){setMarkerPressed(true)};
         const markerPoint = event.nativeEvent.coordinate;
         // Hide any open popups
         hideAllPopups();
         if (radius) {
-           
           setSelectedZone({ coordinates: event.nativeEvent.coordinate, radius });
           const lat = event.nativeEvent.coordinate.latitude;
           const lon = event.nativeEvent.coordinate.longitude;
@@ -645,6 +647,11 @@ export default function Home() {
                         handleMarkerClick(event);
                     }}
                       onPress={() => {
+                        // If a marker was just pressed, skip clearing
+                        if (markerPressed) {
+                          setMarkerPressed(false);
+                          return;
+                        }
                         // Clear the radius circle when watcher inspector or watch-zones list is open
                         if ((showInspector && inspected?.isWatcher) || showWatchZonesMenu) {
                           setSelectedZone(null);

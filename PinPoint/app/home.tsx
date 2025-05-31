@@ -658,7 +658,6 @@ export default function Home() {
               Alert.alert("Could not delete", "Watcher ID is undefined.");
               return;
             }
-            Alert.alert("Deleting Watcher...");
             deleteWatcherCall(pin_id);
             hideAllPopups();
             refreshPins();
@@ -687,7 +686,6 @@ export default function Home() {
               return;
             }
             // TODO: Disallow pin deletions after confirmation threshold.
-            Alert.alert("Deleting Report...");
             deletePinCall(pin_id, userData.id);
             hideAllPopups();
             refreshPins();

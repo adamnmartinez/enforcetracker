@@ -26,6 +26,8 @@ export default function Login() {
             if (response.status == 200) {
                 await signIn(data.token);
                 router.replace("/home");
+            } else if (response.status == 400) {
+                Alert.alert("Bad Request", data.message);
             } else if (response.status == 429) {
                 Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {

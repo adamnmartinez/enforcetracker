@@ -26,6 +26,8 @@ export default function Signup() {
             const data = await response.json();
             if (response.status == 201) {
                 await signUp(data.token);
+            } else if (response.status == 400) {
+                Alert.alert("Bad Request", data.message);
             } else if (response.status == 429) {
                 Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {

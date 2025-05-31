@@ -30,7 +30,7 @@ import { HOST } from "./server";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { endorsePin, unendorsePin } from "./validity"
+import { endorsePinCall, removeEndorseCall } from "./validity"
 
 function handleRegistrationError(errorMessage: string) {
   Alert.alert("Notification Error", errorMessage);
@@ -395,8 +395,10 @@ export default function Home() {
 
       if (response.status == 201) {
         Alert.alert("Pin Created!")
+      } else if (response.status == 429) {
+        Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
       } else {
-        Alert.alert("Error", data.message || "Failed to upload pin");
+        Alert.alert("Pin Upload Failed", data.message || "Failed to upload pin");
       }
       
     } catch (e) {
@@ -431,8 +433,10 @@ export default function Home() {
 
       if (response.status == 201) {
         fetchWatchersCall();
+      } else if (response.status == 429) {
+        Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
       } else {
-        Alert.alert("Error", data.message || "Failed to upload watcher");
+        Alert.alert("Watch Zone Creation Error", data.message || "Failed to create watcher");
       }
 
     } catch (e) {
@@ -538,8 +542,7 @@ export default function Home() {
       Alert.alert("Error", "Please select a category");
       return;
     }
-    // const newPin = new Pin(pinLocation, pinCategory, "none", userData.id);
-    // setIDTracker((prev) => prev + 1);
+
     // Animate map to pin location using animateToRegion for smooth pan+zoom
     const newRegion = {
       latitude: pinLocation.latitude,
@@ -555,8 +558,6 @@ export default function Home() {
     } catch (e) {
       Alert.alert("An error occured handling a new pin upload.");
     } finally {
-      // setEndorsed((prev) => [...prev, newPin.id]);
-      // newPin.validity = newPin.validity + 1;
       hideAllPopups();
       refreshPins();
     }
@@ -714,7 +715,7 @@ export default function Home() {
           });
 
           if (marker) {
-            await endorsePin(userData.id, pin_id);
+            await endorsePinCall(userData.id, pin_id);
             setInspected(marker);
           }
         } catch (e) {
@@ -741,7 +742,7 @@ export default function Home() {
 
           if (marker) {
             marker.validity = marker.validity - 1;
-            await unendorsePin(userData.id, pin_id);
+            await removeEndorseCall(userData.id, pin_id);
             setInspected(marker);
           }
 

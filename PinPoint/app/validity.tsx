@@ -1,3 +1,4 @@
+import { Alert } from "react-native";
 import { HOST } from "./server";
 
 const addEntryValidity = (user: string) => {
@@ -24,7 +25,7 @@ const addEntryValidity = (user: string) => {
   }
 }
 
-const endorsePin = async (user: string, pid: string) => {
+const endorsePinCall = async (user: string, pid: string) => {
    try{
     const response = await fetch(HOST + "/api/validates/add", {
       method: "POST",
@@ -39,8 +40,10 @@ const endorsePin = async (user: string, pid: string) => {
 
     if (response.status == 200) {
       console.log("Endorse Success")
-    }else{
-      console.log("Internal Error")
+    } else if (response.status == 429) {
+      Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
+    } else {
+      Alert.alert("Report Endorsement Failed", "Something went wrong while validating this report.")
     }
   } catch (e){
     console.log("Unable to connect")
@@ -48,7 +51,7 @@ const endorsePin = async (user: string, pid: string) => {
   }
 }
 
-const unendorsePin = async (user: string, pid: string) => {
+const removeEndorseCall = async (user: string, pid: string) => {
   try{
     const response = await fetch(HOST + "/api/validates/delete", {
       method: "POST",
@@ -98,4 +101,4 @@ const userEndorsed = (uid: string, pid: string) => {
   }
 }
 
-export {addEntryValidity, userEndorsed, unendorsePin, endorsePin}
+export {addEntryValidity, userEndorsed, removeEndorseCall, endorsePinCall}

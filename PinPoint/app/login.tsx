@@ -25,8 +25,9 @@ export default function Login() {
             const data = await response.json();
             if (response.status == 200) {
                 await signIn(data.token);
-                     
-            router.replace("/home");
+                router.replace("/home");
+            } else if (response.status == 429) {
+                Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {
                 Alert.alert("Login Failed", data.message || "Invalid credentials");
             }

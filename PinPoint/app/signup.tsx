@@ -26,18 +26,13 @@ export default function Signup() {
             const data = await response.json();
             if (response.status == 201) {
                 await signUp(data.token);
+            } else if (response.status == 429) {
+                Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
+            } else {
+                Alert.alert("Authentication Failed", data.message || "An unexpected error occured.")
             }
-            // addEntryValidity(data.uid);
-            //         router.replace("/home");
-            //     } else if (response.status == 400) {
-            //         Alert.alert("Signup Failed", data.message || "You must fill in all fields.");
-            //     } else if (response.status == 409) {
-            //         Alert.alert("Signup Failed", data.message || "A user with that name already exists.");
-            //     } else {
-            //         Alert.alert("Signup Failed", data.message || "Error creating account");
-            //     }
         } catch (error) {
-            Alert.alert("Network Error", "An error occurred. Please try again.");
+            Alert.alert("Network Error", "An error occurred with the server. Please try again.");
         }
     }
 

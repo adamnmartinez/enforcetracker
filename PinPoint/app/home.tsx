@@ -642,7 +642,7 @@ export default function Home() {
 
     hideAllPopups();
 
-    //setShowInspector(true);
+    setShowInspector(true);
   };
 
   const handleDeleteWatcher = async (pin_id: string | undefined) => {

@@ -36,16 +36,16 @@ export default function Login() {
                             text: "Yes",
                             onPress: async () => {
                                 try {
-                                    const data = await response.json()
                                     await fetch(HOST + "/api/regenerate-vericode", {
                                         method: "POST",
                                         headers: {
                                             "Content-Type": "application/json",
                                         },
-                                        body: JSON.stringify({ uid: data.uid }),
+                                        body: JSON.stringify({ uid: data.uid, email: data.email }),
                                     })
                                 } catch (e) {
-                                    Alert.alert("Error", "An unexpected error occured, please try again later.")
+                                    //Alert.alert("Error", "An unexpected error occured, please try again later.")
+                                    Alert.alert("Error", e?.toString())
                                 } finally {
                                     Alert.alert("Code Sent", "Please check your email to complete account registration.")
                                 }

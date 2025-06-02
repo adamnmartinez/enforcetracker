@@ -1,25 +1,176 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
 import { TouchableOpacity } from "react-native";
+
 import { View, Text, Button, ScrollView, Alert, Pressable, ActivityIndicator, SafeAreaView } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { homeStyle } from "./style";
-import MapView, { LatLng, LongPressEvent, Marker, MarkerPressEvent, Region, Camera, Circle } from "react-native-maps"
-import Slider from '@react-native-community/slider';
-import { Pin } from "./pin";
-import { Dropdown } from "react-native-element-dropdown"
-import * as Location from 'expo-location';
+import MapView, {
+  LatLng,
+  LongPressEvent,
+  Marker,
+  MarkerPressEvent,
+  Region,
+  Camera,
+  Circle,
+} from "react-native-maps";
+import Slider from "@react-native-community/slider";
+import { Pin, Watcher } from "./pin";
+import { Dropdown } from "react-native-element-dropdown";
+import * as Location from "expo-location";
 import { HOST } from "./server";
+import * as Device from "expo-device";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import { endorsePinCall, removeEndorseCall } from "./validity"
+
+function handleRegistrationError(errorMessage: string) {
+  Alert.alert("Notification Error", errorMessage);
+}
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+async function registerForPushNotificationsAsync() {
+  if (Platform.OS === "android") {
+    Notifications.setNotificationChannelAsync("default", {
+      name: "default",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF231F7C",
+    });
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") {
+      handleRegistrationError(
+        "Permission not granted to get push token for push notification!",
+      );
+      return;
+    }
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ??
+      Constants?.easConfig?.projectId;
+    if (!projectId) {
+      handleRegistrationError("Project ID not found");
+    }
+    try {
+      const pushTokenString = (
+        await Notifications.getExpoPushTokenAsync({
+          projectId,
+        })
+      ).data;
+      return pushTokenString;
+    } catch (e: unknown) {
+      handleRegistrationError(`${e}`);
+    }
+  } else {
+    handleRegistrationError("Must use physical device for push notifications");
+  }
+}
 
 export default function Home() {
-    const { userToken, signOut } = useContext(AuthContext);
-    const router = useRouter();
-    const [markers, setMarkers] = useState<Pin[]>([]);
-    const [watchZones, setWatchZones] = useState<{ id: string, coordinates: LatLng, category: string, radius: number }[]>([]);
-    
-    // State to track which zone is selected for viewing radius
+
+  const router = useRouter();
+
+  // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
+  const [IDTracker, setIDTracker] = useState<number>(0);
+  // User Auth Token
+  const { userToken, signOut } = useContext(AuthContext);
+  const [markers, setMarkers] = useState<Pin[]>([]);
+  const [watchZones, setWatchZones] = useState<Watcher[]>([]);
+  // Menu States
+  const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
+  const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
+  // User's data, used by several methods.
+  const [userData, setUserData] = useState<{
+    username: string;
+    id: string;
+    expotoken: string;
+  }>({
+    username: "",
+    id: "",
+    expotoken: "",
+  });
+  // States for pins
+  const [showCreator, setShowCreator] = useState<Boolean>(false);
+  const [pinCategory, setPinCategory] = useState<string>("");
+  const [pinLocation, setPinLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  }>({
+    latitude: 0,
+    longitude: 0,
+  });
+  // States for watchers
+  const [watcherCategory, setWatcherCategory] = useState<string>("");
+  const [watcherLocation, setWatcherLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  }>({
+    latitude: 0,
+    longitude: 0,
+  });
+  const [watcherRadius, setWatcherRadius] = useState<number>(100);
+  // State for pin inspection.
+  const [showInspector, setShowInspector] = useState<Boolean>(false);
+  const [inspected, setInspected] = useState<Pin | Watcher>();
+  const [endorsed, setEndorsed] = useState<string[]>([]);
+  // Map Region State
+  const [mapRegion, setMapRegion] = useState<Region>({
+    latitude: 36.974117,
+    longitude: -122.030792,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
+  // Use Region (map view coordinates)
+  const [initialRegion, setInitialRegion] = useState<Region | null>(null);
+  // Map Reference
+  const mapRef = useRef<MapView>(null);
+  // Track user location
+  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
+  // Creator menu dropdown options, "Categories"
+  const public_category = [
+    { label: "Police", value: "Police" },
+    { label: "Immigration Enforcment", value: "Immigration Enforcement" },
+    { label: "Parking Enforcement", value: "Parking Enforcment" },
+    { label: "Campus Security (CSO)", value: "CSO" },
+  ];
+  const private_category = [
+    { label: "Home", value: "Home" },
+    { label: "Work", value: "Work" },
+    { label: "Car", value: "Car" },
+    { label: "General", value: "General" },
+  ];
+  // Notification States
+  const [expoPushToken, setExpoPushToken] = useState("");
+  const [channels, setChannels] = useState<Notifications.NotificationChannel[]>(
+    [],
+  );
+  const [notification, setNotification] = useState<
+    Notifications.Notification | undefined
+  >(undefined);
+  // Notification References
+  const notificationListener = useRef<Notifications.EventSubscription>(null);
+  const responseListener = useRef<Notifications.EventSubscription>(null);
+
+  // State to track which zone is selected for viewing radius
     const [selectedZone, setSelectedZone] = useState<{ coordinates: LatLng; radius: number } | null>(null);
     // Track if a marker was just pressed to prevent map tap from clearing selection
     const [markerPressed, setMarkerPressed] = useState(false);
@@ -44,155 +195,167 @@ export default function Home() {
         useNativeDriver: false,
       }).start(() => setMenuOpen(!menuOpen));
     };
-    
-    // States for choice menu (pin or watch zone)
-    const [showChoiceMenu, setShowChoiceMenu] = useState<Boolean>(false);
-    const [showWatcherMenu, setShowWatcherMenu] = useState<Boolean>(false);
-    const [userData, setUserData] = useState<{username: string, id: string}>({
-        username: "",
-        id: "",
-    })
+      
+  // Convert category string to CSS Color for display
+  const getPinColor = (category: string) => {
+    switch (category) {
+      case "Police":
+        return "blue";
 
-    // States for creating a new pin
-    const [showCreator, setShowCreator] = useState<Boolean>(false);
-    const [pinCategory, setPinCategory] = useState<string>("");
-    const [pinLocation, setPinLocation] = useState<{ latitude: number, longitude: number}>({
-        latitude: 0,
-        longitude: 0,
-    })
+      case "Immigration Enforcement":
+        return "red";
 
-    const [watcherCategory, setWatcherCategory] = useState<string>("")
-    const [watcherLocation, setWatcherLocation] = useState<{ latitude: number, longitude: number}>({
-        latitude: 0,
-        longitude: 0,
-    })
+      case "Parking Enforcment":
+        return "yellow";
 
-    const [watcherRadius, setWatcherRadius] = useState<number>(100);
+      case "CSO":
+        return "brown";
 
-    // State for pin inspection.
-    const [showInspector, setShowInspector] = useState<Boolean>(false);
-    const [inspected, setInspected] = useState<{pin: Pin, isWatcher: Boolean}>()
-    const [endorsed, setEndorsed] = useState<string[]>([])
-
-    // Map default region. This is changes when a new pin is created, as the map must reload and remain at the last cam location.
-    const [mapRegion, setMapRegion] = useState<Region>({
-        latitude: 36.974117,
-        longitude: -122.030792,
-        latitudeDelta: 0.01, 
-        longitudeDelta: 0.01,
-    })
-    // Track the initial region after loading user location
-    const [initialRegion, setInitialRegion] = useState<Region | null>(null);
-
-    // Creator menu dropdown options, "Categories"
-    const public_category = [
-        { label: 'Police', value: 'Police' },
-        { label: 'Immigration Enforcment', value: 'Immigration Enforcement' },
-        { label: 'Parking Enforcement', value: 'Parking Enforcment' },
-        { label: 'Robbery', value: 'Robbery' },
-        { label: 'Tresspasser', value: 'Tresspassing' },
-    ];  
-
-    const private_category = [
-        { label: 'Home', value: 'Home' },
-        { label: 'Work', value: 'Work' },
-        { label: 'Car', value: 'Car' },
-        { label: 'General', value: 'General'}
-    ]
-
-    // Convert category string to CSS Color for display
-    const getPinColor = (category: string) => {
-        switch(category){
-            case "Police":
-                return "blue"
-
-            case "Immigration Enforcement":
-                return "red"
-
-            case "Parking Enforcment":
-                return "yellow"
-
-            case "Robbery":
-                return "purple"
-
-            case "Tresspassing":
-                return "brown"
-
-            default:
-                return ""
-        }
-    } 
-
-    // Fetch Pins from DB
-    const fetchPins = () => {
-        try {
-            return fetch(HOST + "/api/fetchpins", {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                }
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 200) {
-                        let serverPins: Pin[] = []
-                        for (let i = 0; i < data.pins.length; i++) {
-                            serverPins = [...serverPins, new Pin (
-                                {
-                                    latitude: data.pins[i].latitude,
-                                    longitude: data.pins[i].longitude,
-                                },
-                                data.pins[i].category,
-                                data.pins[i].pid
-                            )]
-                        }
-                        setMarkers(serverPins)
-                    } else {
-                        Alert.alert("Pin Fetch Error", "We ran into an error communicating with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", "An error occured populating the user map...(500)")
-        }
+      default:
+        return "";
     }
+  };
 
-    const fetchWatchers = () => {
-        try {
-            return fetch(HOST + "/api/fetchwatchers", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
+  const fetchPinValidity = async (pin_id: string) => {
+    let score = 0
+    try {
+      const response = await fetch(HOST + "/api/validates/getscore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pin: pin_id,
+        })
+      })
+      
+      const data = await response.json()
+
+      if (response.status == 200) {
+        score = data.score
+        console.log(`${pin_id} score of ${score}`)
+      }
+    } catch (e) {
+      console.log("An error occured determining if the pin was validated or not...")
+      console.error(e)
+    } finally {
+      markers.filter((pin) => pin.id == pin_id)[0].validity = score
+      refreshPins()
+    }
+  }
+
+  const fetchValidatedCall = async (user_id: string) => {
+    console.log(`Getting validation data for ${user_id}`)
+    let validated: string[] = []
+    try {
+      const response = await fetch(HOST + "/api/validates/getvalidated", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user: user_id,
+        })
+      })
+      
+      const data = await response.json()
+
+      if (response.status == 200) {
+        validated = data.validated
+      }
+    } catch (e) {
+      console.log("An error occured determining if the pin was validated or not...")
+      console.error(e)
+    } finally {
+      setEndorsed(validated)
+    }
+  }
+
+  const fetchPinsCall = async () => {
+    let serverPins: Pin[] = []
+    try {
+      const response = await fetch(HOST + "/api/fetchpins", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+          for (let i = 0; i < data.pins.length; i++) {
+            serverPins = [
+              ...serverPins,
+              new Pin(
+                {
+                  latitude: data.pins[i].latitude,
+                  longitude: data.pins[i].longitude,
                 },
-                body: JSON.stringify({
-                    uid: userData.id 
-                })
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 200) {
-                        let serverWatchers: { id: string, coordinates: LatLng, category: string, radius: number }[] = []
-                        for (let i = 0; i < data.pins.length; i++) {
-                            serverWatchers = [...serverWatchers, {
-                                id: data.pins[i].pid,
-                                coordinates: {
-                                    latitude: data.pins[i].latitude,
-                                    longitude: data.pins[i].longitude,
-                                },
-                                category: data.pins[i].category,
-                                radius: data.pins[i].radius
-                            }]
-                        }
-                        setWatchZones(serverWatchers)
-                    } else {
-                        Alert.alert("Watcher Fetch Error", "We ran into an error communicating with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", "An error occured populating the user map...(500)")
-        }
+                data.pins[i].category,
+                data.pins[i].pid,
+                data.pins[i].uid,
+              ),
+            ];
+          }
+      } else {
+        Alert.alert(
+          "Pin Fetch Error",
+          "We ran into an error communicating with the server (500)",
+        );
+      }
+    } catch (e) {
+      Alert.alert("Error", "An error occured populating the user map...(500)");
+    } finally {
+      setMarkers(serverPins)
     }
+  };
 
-    const refreshPins = async () => {
+  const fetchWatchersCall = async () => {
+    try {
+      const response = await fetch(HOST + "/api/fetchwatchers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uid: userData.id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.status == 200) {
+        let serverWatchers: Watcher[] = [];
+        for (let i = 0; i < data.pins.length; i++) {
+          serverWatchers = [
+            ...serverWatchers,
+            new Watcher(
+              {
+                latitude: data.pins[i].latitude,
+                longitude: data.pins[i].longitude,
+              },
+              data.pins[i].category,
+              data.pins[i].pid,
+              data.pins[i].uid,
+              data.pins[i].radius,
+            ),
+          ];
+        }
+        await setWatchZones(serverWatchers);
+      } else {
+        Alert.alert(
+          "Watcher Fetch Error",
+          "We ran into an error communicating with the server (500)",
+        );
+      }
+
+    } catch (e) {
+      Alert.alert("Error", "An error occured populating the user map...(500)");
+    }
+  };
+
+  const refreshPins = async () => {
         setIsRefreshing(true);
         try {
             await Promise.all([fetchPins(), fetchWatchers()]);
@@ -201,125 +364,168 @@ export default function Home() {
         }
     };
 
-    useEffect(() => {
-        fetchPins()
-        fetchWatchers()
-        fetchUserData()
-    }, [])
+  const fetchUserDataCall = async () => {
+    if (!userToken) Alert.alert("NO TOKEN DETECTED");
+    try {
+      const response = await fetch(HOST + "/api/me", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: userToken ? userToken : "No Token",
+        },
+      })
 
-    const fetchUserData = async () => {
-        if (!userToken) Alert.alert("NO TOKEN DETECTED")
+      const data = await response.json()
 
-        try {
-            fetch(HOST + "/api/me", {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    "authorization": userToken ? userToken : "No Token",
-                }
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 200) {
-                        setUserData({
-                            username: data.username, 
-                            id: data.id,
-                        })
-                    } else {
-                        Alert.alert("User Fetch Error", "We ran into an error communicating with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", "An error occured getting user data...(500)")
-        }
+      if (response.status == 200) {
+        setUserData({
+          username: data.username,
+          id: data.id,
+          expotoken: data.expotoken,
+        });
+      } else {
+        Alert.alert("Error", data.message || "Failed to get user data (500)");
+      }
+
+    } catch (e) {
+      Alert.alert("Error", "An error occured getting user data... (500)")
     }
+  };
 
-    // Fetch Pins from DB
-    const uploadPin = (category: string, coordinates: LatLng, author: string) => {
-        try {
-            fetch(HOST + "/api/pushpin", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    category: category,
-                    longitude: coordinates.longitude,
-                    latitude: coordinates.latitude,
-                    author_id: author,
-                })
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 201) {
-                        Alert.alert("Pin Created!")
-                    } else {
-                        Alert.alert("Pin Upload Error", "We ran into an error with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", e?.toString())
-        } finally {
-            fetchPins()
-        }
+  useEffect(() => {
+    if (userData.id) {
+      fetchValidatedCall(userData.id)
     }
+  }, [userData.id])
 
-    const uploadWatcher = (category: string, coordinates: LatLng, author: string, radius: number) => {
-        try {
-            fetch(HOST + "/api/pushwatcher", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    category: category,
-                    longitude: coordinates.longitude,
-                    latitude: coordinates.latitude,
-                    author_id: author,
-                    radius: radius,
-                })
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 201) {
-                        fetchWatchers()
-                    } else {
-                        Alert.alert("Watcher Upload Error", "We ran into an error with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", e?.toString())
-        }   
+  const uploadPinCall = async (
+    category: string,
+    coordinates: LatLng,
+    author: string,
+  ) => {
+    try {
+      const response = await fetch(HOST + "/api/pushpin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category: category,
+          longitude: coordinates.longitude,
+          latitude: coordinates.latitude,
+          author_id: author,
+        }),
+      })
+      const data = await response.json()
+      
+      if (response.status == 201) {
+        Alert.alert("Pin Created!")
+      } else if (response.status == 429) {
+        Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
+      } else {
+        Alert.alert("Pin Upload Failed", data.message || "Failed to upload pin");
+      }
+      
+    } catch (e) {
+      Alert.alert("Error", e?.toString());
+    } finally {
+      fetchPinsCall();
     }
+  };
 
-    const removeWatcher = async (pin_id: string) => {
-        try {
-            fetch(HOST + "/api/deletewatcher", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    pid: pin_id
-                })
-            }).then((response) => {
-                response.json().then((data) => {
-                    if (response.status == 200) {
-                        fetchWatchers()
-                    } else {
-                        Alert.alert("Watcher Delete Error", "We ran into an error with the server (500)")
-                    }
-                })
-            })
-        } catch (e) {
-            Alert.alert("Error", e?.toString())
-        }
+
+  const uploadWatcherCall = async (
+    category: string,
+    coordinates: LatLng,
+    author: string,
+    radius: number,
+  ) => {
+    try {
+      const response = await fetch(HOST + "/api/pushwatcher", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category: category,
+          longitude: coordinates.longitude,
+          latitude: coordinates.latitude,
+          author_id: author,
+          radius: radius,
+        }),
+      })
+
+      const data = await response.json()
+
+
+      if (response.status == 201) {
+        fetchWatchersCall();
+      } else if (response.status == 429) {
+        Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
+      } else {
+        Alert.alert("Watch Zone Creation Error", data.message || "Failed to create watcher");
+      }
+
+    } catch (e) {
+      Alert.alert("Error", e?.toString());
+    } finally {
+      fetchWatchersCall()
     }
+  };
 
-    // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
-    const [IDTracker, setIDTracker] = useState<number>(0)
+  const deleteWatcherCall = async (pin_id: string) => {
+    try {
+      const response = await fetch(HOST + "/api/deletewatcher", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pid: pin_id,
+        }),
+      })
 
-    // Method for hiding windows and menus
+      const data = await response.json()
+
+      if (response.status == 200) {
+        console.log("Delete Watcher Success")
+      } else {
+        Alert.alert("Error", data.message || "Failed to delete watcher");
+      }
+
+    } catch (e) {
+      Alert.alert("Error", e?.toString());
+    } finally {
+      fetchWatchersCall();
+    }
+  };
+
+  const deletePinCall = async (pid: string, uid: string) => {
+    try {
+      const response = await fetch(HOST + "/api/deletepin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pid, uid }),
+      })
+
+      const data = await response.json()
+
+      if (response.status === 200) {
+        console.log("Delete Pin Success")
+      } else {
+        Alert.alert("Error", data.message || "Failed to delete pin");
+      }
+    } catch (e) {
+      Alert.alert("Pin Delete Error", e?.toString());
+    } finally {
+      fetchPinsCall()
+    }
+  };
+
+              
+   // Method for hiding windows and menus
     const hideAllPopups = () => {
       setShowInspector(false);
       setShowWatcherMenu(false);
@@ -335,45 +541,14 @@ export default function Home() {
           useNativeDriver: false,
         }).start(() => setMenuOpen(false));
       }
-    };
+    };   
 
-    // Reference to map to retrieve camera data
-    const mapRef = useRef<MapView>(null)
-    // Track user location
-    const [userLocation, setUserLocation] = useState<LatLng | null>(null);
-    const [isLoadingLocation, setIsLoadingLocation] = useState(true);
-
-    const handleLogout = async () => {
-        await signOut();
-        router.replace("/login");
-    };
-
-    // Track user location on load
-    useEffect(() => {
-        (async () => {
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Location access is required.');
-                return;
-            }
-            let location = await Location.getCurrentPositionAsync({});
-            const coords = {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
-            };
-            setUserLocation(coords);
-            const loadedRegion = {
-                latitude: coords.latitude - (0.001 * 0.25),
-                longitude: coords.longitude,
-                latitudeDelta: 0.002,
-                longitudeDelta: 0.002,
-            };
-            setMapRegion(loadedRegion);
-            setInitialRegion(loadedRegion);
-            setIsLoadingLocation(false);
-        })();
-    }, []);
-
+  // Frontend handler functions
+  const handleLogout = async () => {
+    await signOut();
+    router.replace("/login");
+  };
+  
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
         const mapPoint = event.nativeEvent.coordinate
@@ -394,93 +569,100 @@ export default function Home() {
             }, { duration: 750 })
         })
 
-        // Set Menus
-        hideAllPopups()
-        setShowChoiceMenu(true)
+    // Set Menus
+    hideAllPopups();
+    setShowChoiceMenu(true);
+  };
+
+  const handleCreatePin = async () => {
+    // Create new pin object and assign ID
+    if (pinCategory == "") {
+      Alert.alert("Error", "Please select a category");
+      return;
     }
 
-    const handleNewPin = async() => {
-        // Create new pin object and assign ID
-        if (pinCategory == "") {
-            Alert.alert("Error", "Please select a category")
-            return
-        }
 
-        const newPin = new Pin(pinLocation, pinCategory, IDTracker.toString())
-        setIDTracker((prev) => prev + 1)
+    // Animate map to pin location using animateToRegion for smooth pan+zoom
+    const newRegion = {
+      latitude: pinLocation.latitude,
+      longitude: pinLocation.longitude,
+      latitudeDelta: mapRegion.latitudeDelta,
+      longitudeDelta: mapRegion.longitudeDelta,
+    };
+    mapRef.current?.animateToRegion(newRegion, 1500);
+    setMapRegion(newRegion);
 
-        // Animate map to pin location using animateToRegion for smooth pan+zoom
-        const newRegion = {
-            latitude: pinLocation.latitude,
-            longitude: pinLocation.longitude,
-            latitudeDelta: mapRegion.latitudeDelta,
-            longitudeDelta: mapRegion.longitudeDelta,
-        };
-        mapRef.current?.animateToRegion(newRegion, 1500);
-        setMapRegion(newRegion);
+    try {
+      uploadPinCall(pinCategory, pinLocation, userData.id);
+    } catch (e) {
+      Alert.alert("An error occured handling a new pin upload.");
+    } finally {
+      hideAllPopups();
+      refreshPins();
 
-        try {
-            uploadPin(pinCategory, pinLocation, userData.id)
-        } catch (e) {
-            Alert.alert("An error occured handling a new pin upload.")
-        }  finally {
-            setEndorsed((prev) => [...prev, newPin.id])
-            newPin.validity = newPin.validity + 1
-            hideAllPopups()
-            refreshPins()
-        }
-        // Hide windows
-        
+    }
+  };
+
+  const handleCreateWatcher = async () => {
+    if (watcherCategory == "") {
+      Alert.alert("Error", "Please select a category");
+      return;
+    } else if (userData.id == "") {
+      Alert.alert(
+        "Error",
+        "Could not find user, please reauthenticate and try again.",
+      );
+      return;
     }
 
-    const handleNewWatcher = async () => {
-        if (watcherCategory == "") {
-            Alert.alert("Error", "Please select a category")
-            return
-        } else if (userData.id == "") {
-            Alert.alert("Error", "Could not find user, please reauthenticate and try again.")
-            return
-        }
+    // Animate map to watcher location using animateToRegion for smooth pan+zoom
+    const newRegion = {
+      latitude: watcherLocation.latitude,
+      longitude: watcherLocation.longitude,
+      latitudeDelta: mapRegion.latitudeDelta,
+      longitudeDelta: mapRegion.longitudeDelta,
+    };
+    mapRef.current?.animateToRegion(newRegion, 1500);
+    setMapRegion(newRegion);
 
-        // Animate map to watcher location using animateToRegion for smooth pan+zoom
-        const newRegion = {
-            latitude: watcherLocation.latitude,
-            longitude: watcherLocation.longitude,
-            latitudeDelta: mapRegion.latitudeDelta,
-            longitudeDelta: mapRegion.longitudeDelta,
-        };
-        mapRef.current?.animateToRegion(newRegion, 1500);
-        setMapRegion(newRegion);
+    Alert.alert(
+      "Watch Zone Created!",
+      `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`,
+    );
 
-        Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`)
+    uploadWatcherCall(
+      watcherCategory,
+      watcherLocation,
+      userData.id,
+      watcherRadius,
+    );
 
-        uploadWatcher(watcherCategory, watcherLocation, userData.id, watcherRadius)
+    hideAllPopups();
+    refreshPins();
+  };
 
-        hideAllPopups()
-        refreshPins()
+  const handleInspectData = async (inspectTarget: Pin | Watcher) => {
+    if (inspectTarget instanceof Pin) {
+      try {
+        await fetchPinValidity(inspectTarget.id)
+        await setMapRegion({
+          latitude: inspectTarget.coordinates.latitude - 0.0001,
+          longitude: inspectTarget.coordinates.longitude,
+          latitudeDelta: 0.002,
+          longitudeDelta: 0.002,
+        })
+        await setInspected(inspectTarget)
+      } catch (e) {
+        console.log("An error occured inspecting a pin...")
+      } finally {
+        setShowInspector(true)
+      }
+    } else {
+      setInspected(inspectTarget);
     }
+  };
 
-    const handleInspectData = (
-      id: string,
-      coordinates: LatLng,
-      category: string,
-      validity: number,
-      isWatcher: Boolean,
-      radius?: number
-    ) => {
-        setInspected({
-          pin: {
-            id: id,
-            coordinates: coordinates,
-            category: category,
-            validity: validity,
-          },
-          isWatcher: isWatcher,
-        });
-        // Removed isWatcher && radius block
-    }
-
-    const handleMarkerClick = async (event: MarkerPressEvent, radius?: number) => {
+      const handleMarkerClick = async (event: MarkerPressEvent, radius?: number) => {
         if ( radius ){setMarkerPressed(true)};
         const markerPoint = event.nativeEvent.coordinate;
         // Hide any open popups
@@ -520,56 +702,189 @@ export default function Home() {
         setShowInspector(true);
     };
 
-    const handleDeleteWatcher = async (pin_id: string | undefined) => {
-        if (pin_id == undefined){
-            Alert.alert("Could not delete", "Pin ID is undefined.")
-            return
-        }
-        removeWatcher(pin_id)
-        hideAllPopups()
-        setSelectedZone(null)
-        refreshPins()
+
+  const handleDeleteWatcher = async (pin_id: string | undefined) => {
+    Alert.alert(
+      "Confirm Deletion",
+      "Are you sure you want to delete this watch zone?",
+      [
+        {
+          text: "Yes",
+          onPress: () => {
+            if (pin_id == undefined) {
+              Alert.alert("Could not delete", "Watcher ID is undefined.");
+              return;
+            }
+            deleteWatcherCall(pin_id);
+            hideAllPopups();
+            setSelectedZone(null);
+            refreshPins();
+          },
+        },
+        {
+          text: "No",
+          onPress: () => {
+            return;
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeletePin = async (pin_id: string | undefined) => {
+    Alert.alert(
+      "Confirm Deletion",
+      "Are you sure you want to delete this report?",
+      [
+        {
+          text: "Yes",
+          onPress: () => {
+            if (pin_id == undefined) {
+              Alert.alert("Could not delete", "Pin ID is undefined.");
+              return;
+            }
+            // TODO: Disallow pin deletions after confirmation threshold.
+            deletePinCall(pin_id, userData.id);
+            hideAllPopups();
+            refreshPins();
+          },
+        },
+        {
+          text: "No",
+          onPress: () => {
+            return;
+          },
+        },
+      ],
+    );
+  };
+
+  const handleValidate = async (pin_id: string) => {
+    if (pin_id !== "") {
+      if (!endorsed.includes(pin_id)) {
+        try {
+          setShowInspector(false)
+          setEndorsed((prev) => [...prev, pin_id]);
+
+          const marker = markers.find((obj) => {
+            return obj.id == pin_id;
+          });
+
+          if (marker) {
+            await endorsePinCall(userData.id, pin_id);
+            setInspected(marker);
+          }
+        } catch (e) {
+          console.log(e)
+        } finally {
+          setShowInspector(true)
+        }        
+      } else {
+        Alert.alert("You have already confirmed this report!");
+      }
     }
+  };
 
-    const handleValidate = async (pin_id: string) => {
-        if (pin_id !== "") {
-            if (!endorsed.includes(pin_id)) {
-                setEndorsed((prev) => [...prev, pin_id])
+  const handleUnvalidate = async (pin_id: string) => {
+    if (pin_id !== "") {
+      if (endorsed.includes(pin_id)) {
+        try {
+          setShowInspector(false)
+          setEndorsed((prev) => prev.filter((item) => item != pin_id));
 
-                const marker = markers.find(obj => {
-                    return obj.id == pin_id
-                })
+          const marker = markers.find((obj) => {
+            return obj.id == pin_id;
+          });
 
-                if (marker) {
-                    marker.validity = marker.validity + 1
-                    setInspected({pin: marker, isWatcher: false})
-                }
-                
-            } else {
-                Alert.alert("You have already confirmed this report!")
-            }
+          if (marker) {
+            marker.validity = marker.validity - 1;
+            await removeEndorseCall(userData.id, pin_id);
+            setInspected(marker);
+          }
+
+          fetchPinValidity(pin_id)
+
+        } catch (e) {
+          console.log(e)
+        } finally {
+          setShowInspector(true)
         }
-    }   
-    
-    const handleUnvalidate = async (pin_id: string) => {
-        if (pin_id !== "") {
-            if (endorsed.includes(pin_id)) {
-                setEndorsed((prev) => prev.filter(item => item != pin_id))
+        
+      } else {
+        Alert.alert("You cannot unconfirm a report you have not confirmed!");
+      }
+    }
+  };
+  
+  // When the user's endorsements change, or when the user inspects a new pin, we want to get an accurate count of the pin's endorsments.
+  useEffect(() => {
+    if (inspected) fetchPinValidity(inspected.id)
+  }, [endorsed, inspected])
 
-                const marker = markers.find(obj => {
-                    return obj.id == pin_id
-                })
-
-                if (marker) {
-                    marker.validity = marker.validity - 1
-                    setInspected({pin: marker, isWatcher: false})
-                }
-                
-            } else {
-                Alert.alert("You cannot unconfirm a report you have not confirmed!")
+  // Track user location on load
+    useEffect(() => {
+        (async () => {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location access is required.');
+                return;
             }
-        }
-    }  
+            let location = await Location.getCurrentPositionAsync({});
+            const coords = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            };
+            setUserLocation(coords);
+            const loadedRegion = {
+                latitude: coords.latitude - (0.001 * 0.25),
+                longitude: coords.longitude,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002,
+            };
+            setMapRegion(loadedRegion);
+            setInitialRegion(loadedRegion);
+            setIsLoadingLocation(false);
+        })();
+    }, []);
+
+
+  useEffect(() => {
+    fetchPinsCall()
+    fetchWatchersCall();
+    fetchUserDataCall();
+  }, []);
+
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(
+      (token) => token && setExpoPushToken(token),
+    );
+
+    if (Platform.OS === "android") {
+      Notifications.getNotificationChannelsAsync().then((value) =>
+        setChannels(value ?? []),
+      );
+    }
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
+        setNotification(notification);
+      });
+
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        // console.log(response);
+      });
+
+    return () => {
+      notificationListener.current &&
+        Notifications.removeNotificationSubscription(
+          notificationListener.current,
+        );
+      responseListener.current &&
+        Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, []);
+
+
 
     return (
         <>
@@ -740,16 +1055,29 @@ export default function Home() {
                       borderRadius: 20,
                       elevation: 4,
                       zIndex: 1000,
-                    }}
+                  }}
+                  />
+                </View>
+              </View>
+            )}
+            {showCreator && (
+              <View style={styles.popup}>
+                <View
+                  style={{
+                    position: "relative",
+                    alignItems: "center",
+                    marginBottom: 20,
+                    paddingTop: 20,
+                  }}
+                >
+                  <TouchableOpacity
                     onPress={() => {
-                      if (initialRegion) {
-                        mapRef.current?.animateToRegion(initialRegion, 1000);
-                        setMapRegion(initialRegion);
-                      } else {
-                        Alert.alert("Still loading initial view");
-                      }
+                      hideAllPopups();
+                      setShowChoiceMenu(true);
                     }}
+                    style={{ position: "absolute", left: 0 }}
                   >
+
                     <Ionicons name="locate" size={24} color="black" />
                   </Pressable>
                   <Pressable
@@ -865,57 +1193,77 @@ export default function Home() {
                             setSelectedZone(null)
                             }}/>
                         </View>
+
                     </View>
-                }
-                {showCreator && 
-                    <View style={styles.popup}>
-                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
-                            <TouchableOpacity onPress={() => {
-                                hideAllPopups();
-                                setShowChoiceMenu(true);
-                            }}
-                            style={{ position: 'absolute', left: 0 }}
-                            >
-                                <Text style={{ fontSize: 24}}>←</Text>
-                            </TouchableOpacity>
-                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
-                        </View>
-                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
-                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
-                        <Dropdown
-                            style={styles.dropdown}
-                            placeholderStyle={styles.popupText}
-                            selectedTextStyle={styles.popupText}
-                            inputSearchStyle={styles.popupText}
-                            data={public_category}
-                            maxHeight={300}
-                            labelField="label"
-                            valueField="value"
-                            placeholder={'Select Category...'}
-                            searchPlaceholder="Search..."
-                            value={pinCategory}
-                            search={false}
-                            onChange={item => {
-                              setPinCategory(item.value);
-                            }}
-                            dropdownPosition="top"
-                        />
-                        <View style={
-                            {
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                                gap: 20,
-                                marginTop: 10,
-                            }
-                        }>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewPin}>
-                                <Text style={styles.buttonText}>Create</Text>
-                            </Pressable>
-                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
-                                <Text style={styles.buttonText}>Close</Text>
-                            </Pressable>
-                        </View>
+                  </View>
+                </ScrollView>
+              </View>
+            )}
+            {showWatcherMenu && (
+              <View style={styles.popup}>
+                <View
+                  style={{
+                    position: "relative",
+                    alignItems: "center",
+                    marginBottom: 20,
+                    paddingTop: 20,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      hideAllPopups();
+                      setShowChoiceMenu(true);
+                    }}
+                    style={{ position: "absolute", left: 0 }}
+                  >
+                    <Text style={{ fontSize: 24 }}>←</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.popupHeader, { fontSize: 20 }]}>
+                    Create a Watch Point
+                  </Text>
+                </View>
+                <ScrollView style={{ flex: 1 }}>
+                  <View style={{ height: 650 }}>
+                    <Text style={styles.popupText}>
+                      {watcherLocation.latitude},{" "}
+                    </Text>
+                    <Text style={styles.popupText}>
+                      {watcherLocation.longitude},{" "}
+                    </Text>
+                    <Dropdown
+                      style={styles.dropdown}
+                      placeholderStyle={styles.popupText}
+                      selectedTextStyle={styles.popupText}
+                      inputSearchStyle={styles.popupText}
+                      data={private_category}
+                      maxHeight={300}
+                      labelField="label"
+                      valueField="value"
+                      placeholder={"Select Category..."}
+                      searchPlaceholder="Search..."
+                      value={watcherCategory}
+                      search={false}
+                      onChange={(item) => {
+                        setWatcherCategory(item.value);
+                      }}
+                      dropdownPosition="top"
+                    />
+                    <View style={{ alignItems: "center", marginVertical: 10 }}>
+                      <Text style={styles.popupText}>
+                        Radius: {watcherRadius} meters
+                      </Text>
+                      <Slider
+                        style={{ width: 250, height: 40 }}
+                        minimumValue={5}
+                        maximumValue={100}
+                        step={5}
+                        value={watcherRadius}
+                        onValueChange={(value: number) =>
+                          setWatcherRadius(value)
+                        }
+                      />
                     </View>
+
                 }
                 {showWatcherMenu && 
                     <View style={styles.popup}>

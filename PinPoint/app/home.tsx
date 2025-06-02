@@ -1,8 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { Animated } from "react-native";
-import { TouchableOpacity } from "react-native";
-
-import { View, Text, Button, ScrollView, Alert, Pressable, ActivityIndicator, SafeAreaView } from "react-native";
+import { Animated, TouchableOpacity, Platform, View, Text, Button, ScrollView, Alert, Pressable, ActivityIndicator, SafeAreaView } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -358,7 +355,7 @@ export default function Home() {
   const refreshPins = async () => {
         setIsRefreshing(true);
         try {
-            await Promise.all([fetchPins(), fetchWatchers()]);
+            await Promise.all([fetchPinsCall(), fetchWatchersCall()]);
         } finally {
             setIsRefreshing(false);
         }
@@ -646,7 +643,7 @@ export default function Home() {
       try {
         await fetchPinValidity(inspectTarget.id)
         await setMapRegion({
-          latitude: inspectTarget.coordinates.latitude - 0.0001,
+          latitude: inspectTarget.coordinates.latitude - 0.0003,
           longitude: inspectTarget.coordinates.longitude,
           latitudeDelta: 0.002,
           longitudeDelta: 0.002,
@@ -883,9 +880,7 @@ export default function Home() {
         Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, []);
-
-
-
+  
     return (
         <>
         {isLoadingLocation ? (
@@ -997,20 +992,19 @@ export default function Home() {
                       <Marker 
                           key={index} 
                           pinColor={getPinColor(data.category)}
-                          onPress={() => {handleInspectData(data.id, data.coordinates, data.category, data.validity, false)}} 
+                          onPress={() => { handleInspectData(data); }} 
                           coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                       />
                   ))}
                   {watchZones.map((data, index) => (
                       <Marker 
                           key={index}
-
                           // pinColor={getPinColor(data.category)}
                           onPress={() => {
-                            handleInspectData(data.id, data.coordinates, data.category, 0, true, data.radius);
+                            handleInspectData(data);
                             setSelectedZone({
-                            coordinates: data.coordinates,
-                            radius: data.radius
+                              coordinates: data.coordinates,
+                              radius: data.radius
                             });
                             const lat = data.coordinates.latitude;
                             const lon = data.coordinates.longitude;
@@ -1019,19 +1013,19 @@ export default function Home() {
                             const latDelta = (r * 2) / 110000;
                             const lonDelta = latDelta / Math.cos(lat * Math.PI / 100);
         
-                        // Center within the visible map (not behind bottom menu)
-                        const bottomFraction = 0.5; // bottom sheet covers 50% of height
-                        const latOffset = latDelta * (bottomFraction * 2.5);
-                        mapRef.current?.animateToRegion(
-                            {
-                            latitude: lat - latOffset,
-                            longitude: lon,
-                            latitudeDelta: latDelta,
-                            longitudeDelta: lonDelta
-                            },
-                            750
-                       );
-                        }}
+                            // Center within the visible map (not behind bottom menu)
+                            const bottomFraction = 0.5; // bottom sheet covers 50% of height
+                            const latOffset = latDelta * (bottomFraction * 2.5);
+                            mapRef.current?.animateToRegion(
+                              {
+                                latitude: lat - latOffset,
+                                longitude: lon,
+                                latitudeDelta: latDelta,
+                                longitudeDelta: lonDelta
+                              },
+                              750
+                            );
+                          }}
                           coordinate={{latitude: data.coordinates.latitude, longitude: data.coordinates.longitude}}
                       />
                   ))}
@@ -1055,29 +1049,16 @@ export default function Home() {
                       borderRadius: 20,
                       elevation: 4,
                       zIndex: 1000,
-                  }}
-                  />
-                </View>
-              </View>
-            )}
-            {showCreator && (
-              <View style={styles.popup}>
-                <View
-                  style={{
-                    position: "relative",
-                    alignItems: "center",
-                    marginBottom: 20,
-                    paddingTop: 20,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={() => {
-                      hideAllPopups();
-                      setShowChoiceMenu(true);
                     }}
-                    style={{ position: "absolute", left: 0 }}
+                    onPress={() => {
+                      if (initialRegion) {
+                        mapRef.current?.animateToRegion(initialRegion, 1000);
+                        setMapRegion(initialRegion);
+                      } else {
+                        Alert.alert("Still loading initial view");
+                      }
+                    }}
                   >
-
                     <Ionicons name="locate" size={24} color="black" />
                   </Pressable>
                   <Pressable
@@ -1161,14 +1142,14 @@ export default function Home() {
                 {showInspector && 
                     <View style={styles.popup}>
                         <Text style={styles.popupHeader}>{ inspected?.isWatcher ? "Watch Zone" : "Report"}</Text>
-                        <Text style={styles.popupText}>ID: {inspected?.pin.id}</Text>
-                        <Text style={styles.popupText}>Category: {inspected?.pin.category}</Text>
+                        <Text style={styles.popupText}>ID: {inspected?.id}</Text>
+                        <Text style={styles.popupText}>Category: {inspected?.category}</Text>
                         { inspected?.isWatcher ? 
-                            <Button title={`Delete Zone`} onPress={() => {handleDeleteWatcher(inspected?.pin.id)}}></Button> :
-                            <Button title={`Confirmations ${inspected?.pin.validity}`} onPress={() => {handleValidate(inspected?.pin.id || "")}}></Button>
+                            <Button title={`Delete Zone`} onPress={() => {handleDeleteWatcher(inspected?.id)}}></Button> :
+                            <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
                         }
-                        { inspected && endorsed.includes(inspected.pin.id) &&
-                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.pin.id)}}></Button>
+                        { inspected && endorsed.includes(inspected.id) &&
+                            <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
                         }
                         <Button title="Close" onPress={() => {
                             hideAllPopups();
@@ -1193,77 +1174,57 @@ export default function Home() {
                             setSelectedZone(null)
                             }}/>
                         </View>
-
                     </View>
-                  </View>
-                </ScrollView>
-              </View>
-            )}
-            {showWatcherMenu && (
-              <View style={styles.popup}>
-                <View
-                  style={{
-                    position: "relative",
-                    alignItems: "center",
-                    marginBottom: 20,
-                    paddingTop: 20,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={() => {
-                      hideAllPopups();
-                      setShowChoiceMenu(true);
-                    }}
-                    style={{ position: "absolute", left: 0 }}
-                  >
-                    <Text style={{ fontSize: 24 }}>←</Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.popupHeader, { fontSize: 20 }]}>
-                    Create a Watch Point
-                  </Text>
-                </View>
-                <ScrollView style={{ flex: 1 }}>
-                  <View style={{ height: 650 }}>
-                    <Text style={styles.popupText}>
-                      {watcherLocation.latitude},{" "}
-                    </Text>
-                    <Text style={styles.popupText}>
-                      {watcherLocation.longitude},{" "}
-                    </Text>
-                    <Dropdown
-                      style={styles.dropdown}
-                      placeholderStyle={styles.popupText}
-                      selectedTextStyle={styles.popupText}
-                      inputSearchStyle={styles.popupText}
-                      data={private_category}
-                      maxHeight={300}
-                      labelField="label"
-                      valueField="value"
-                      placeholder={"Select Category..."}
-                      searchPlaceholder="Search..."
-                      value={watcherCategory}
-                      search={false}
-                      onChange={(item) => {
-                        setWatcherCategory(item.value);
-                      }}
-                      dropdownPosition="top"
-                    />
-                    <View style={{ alignItems: "center", marginVertical: 10 }}>
-                      <Text style={styles.popupText}>
-                        Radius: {watcherRadius} meters
-                      </Text>
-                      <Slider
-                        style={{ width: 250, height: 40 }}
-                        minimumValue={5}
-                        maximumValue={100}
-                        step={5}
-                        value={watcherRadius}
-                        onValueChange={(value: number) =>
-                          setWatcherRadius(value)
-                        }
-                      />
+                }
+                {showCreator && 
+                    <View style={styles.popup}>
+                        <View style={{ position: 'relative', alignItems: 'center', marginBottom: 20 , paddingTop: 20 }}>
+                            <TouchableOpacity onPress={() => {
+                                hideAllPopups();
+                                setShowChoiceMenu(true);
+                            }}
+                            style={{ position: 'absolute', left: 0 }}
+                            >
+                                <Text style={{ fontSize: 24}}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.popupHeader, { fontSize: 20 }]}>Create a Pin</Text>
+                        </View>
+                        <Text style={styles.popupText}>{pinLocation.latitude}, </Text>
+                        <Text style={styles.popupText}>{pinLocation.longitude}, </Text>
+                        <Dropdown
+                            style={styles.dropdown}
+                            placeholderStyle={styles.popupText}
+                            selectedTextStyle={styles.popupText}
+                            inputSearchStyle={styles.popupText}
+                            data={public_category}
+                            maxHeight={300}
+                            labelField="label"
+                            valueField="value"
+                            placeholder={'Select Category...'}
+                            searchPlaceholder="Search..."
+                            value={pinCategory}
+                            search={false}
+                            onChange={item => {
+                              setPinCategory(item.value);
+                            }}
+                            dropdownPosition="top"
+                        />
+                        <View style={
+                            {
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                gap: 20,
+                                marginTop: 10,
+                            }
+                        }>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreatePin}>
+                                <Text style={styles.buttonText}>Create</Text>
+                            </Pressable>
+                            <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>
+                                <Text style={styles.buttonText}>Close</Text>
+                            </Pressable>
+                        </View>
                     </View>
-
                 }
                 {showWatcherMenu && 
                     <View style={styles.popup}>
@@ -1337,7 +1298,7 @@ export default function Home() {
                                         marginTop: 10,
                                     }
                                 }>
-                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleNewWatcher}>
+                                    <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={handleCreateWatcher}>
                                         <Text style={styles.buttonText}>Create</Text>
                                     </Pressable>
                                     <Pressable style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]} onPress={hideAllPopups}>

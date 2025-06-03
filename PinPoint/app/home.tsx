@@ -699,7 +699,6 @@ export default function Home() {
         setShowInspector(true);
     };
 
-
   const handleDeleteWatcher = async (pin_id: string | undefined) => {
     Alert.alert(
       "Confirm Deletion",

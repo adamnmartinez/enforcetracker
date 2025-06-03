@@ -25,7 +25,9 @@ export default function Signup() {
             });
             const data = await response.json();
             if (response.status == 201) {
-                await signUp(data.token);
+                Alert.alert("You're almost done!", "Please check your e-mail to complete the registration process!")
+                //await signUp(data.token);
+                router.replace("/login");
             } else if (response.status == 400) {
                 Alert.alert("Bad Request", data.message);
             } else if (response.status == 429) {

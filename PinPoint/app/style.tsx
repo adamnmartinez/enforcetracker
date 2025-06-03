@@ -38,8 +38,8 @@ const homeStyle = StyleSheet.create({
     },
     map: {
         width: Dimensions.get('window').width,
-        height: Dimensions.get('window').height / 1.3,
-        zIndex: 1,
+        height: Dimensions.get('window').height,
+        zIndex: 0,
     },
     popup: {
         flex: 1,

@@ -6,6 +6,7 @@ export class Pin {
     id: string;
     author: string;
     validity: number;
+    isWatcher: boolean = false;
 
     constructor(coord: LatLng, category: string, id: string, author: string) {
         this.coordinates = {
@@ -25,6 +26,8 @@ export class Watcher {
     id: string;
     author: string;
     radius: number;
+    isWatcher: boolean = true;
+    validity: number = -1;
 
     constructor(coord: LatLng, category: string, id: string, author: string, radius: number) {
         this.coordinates = {

@@ -28,11 +28,15 @@ export default function Signup() {
                 Alert.alert("You're almost done!", "Please check your e-mail to complete the registration process!")
                 //await signUp(data.token);
                 router.replace("/login");
+            } else if (response.status == 400) {
+                Alert.alert("Bad Request", data.message);
+            } else if (response.status == 429) {
+                Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {
-                Alert.alert("Registration Failed", data.message || "Unexpected error, please try again later.");
+                Alert.alert("Authentication Failed", data.message || "An unexpected error occured.")
             }
         } catch (error) {
-            Alert.alert("Network Error", "An error occurred. Please try again.");
+            Alert.alert("Network Error", "An error occurred with the server. Please try again.");
         }
     }
 

@@ -60,6 +60,10 @@ export default function Login() {
                         },
                         ],
                 )
+            } else if (response.status == 400) {
+                Alert.alert("Bad Request", data.message);
+            } else if (response.status == 429) {
+                Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {
                 Alert.alert("Login Failed", data.message || "Unexpected error, please try again later.");
             }

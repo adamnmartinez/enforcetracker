@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Animated, TouchableOpacity, Platform, View, Text, Button, ScrollView, Alert, Pressable, ActivityIndicator, SafeAreaView } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from "./_contexts/AuthContext";
@@ -86,7 +87,7 @@ export default function Home() {
   const router = useRouter();
 
   // TEMPORARY ID TRACKER FOR TESTING, PIN ID GENERATION SHOULD BE HANDLED SEPARATELY
-  const [IDTracker, setIDTracker] = useState<number>(0);
+ // const [IDTracker, setIDTracker] = useState<number>(0);
   // User Auth Token
   const { userToken, signOut } = useContext(AuthContext);
   const [markers, setMarkers] = useState<Pin[]>([]);
@@ -180,18 +181,26 @@ export default function Home() {
     const [menuOpen, setMenuOpen] = useState(false);
 
     const toggleMenu = () => {
-      // Hide any open popups before toggling slide-over menu
-      setShowInspector(false);
-      setShowWatcherMenu(false);
-      setShowCreator(false);
-      setShowChoiceMenu(false);
-      // setShowWatchZonesMenu(false); // Removed to allow the zones menu to remain open
-      Animated.timing(slideAnim, {
-        toValue: menuOpen ? -menuWidth : 0,
-        duration: 300,
-        useNativeDriver: false,
-      }).start(() => setMenuOpen(!menuOpen));
-    };
+  // close popups
+  setShowInspector(false);
+  setShowWatcherMenu(false);
+  setShowCreator(false);
+  setShowChoiceMenu(false);
+
+  // Animate using the *previous* state:
+  setMenuOpen(prev => {
+    // Determine the animation target before we flip `menuOpen`
+    const targetValue = prev ? -menuWidth : 0;
+    Animated.timing(slideAnim, {
+      toValue: targetValue,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+    
+    // Return the new state (flipped)
+    return !prev;
+  });
+};
       
   // Convert category string to CSS Color for display
   const getPinColor = (category: string) => {
@@ -225,6 +234,11 @@ export default function Home() {
           pin: pin_id,
         })
       })
+      
+        if (!response.ok) {
+        console.log(`Invalid JSON: Error fetching pin validity for ${pin_id}: ${response.statusText}`);
+        return;
+        }
       
       const data = await response.json()
 
@@ -549,9 +563,8 @@ export default function Home() {
     const handleMapLongPress = async (event: LongPressEvent) => {
         // Set new pin location
         const mapPoint = event.nativeEvent.coordinate
-        setPinLocation(mapPoint)
-        setWatcherLocation(mapPoint)
-
+        setPinLocation(mapPoint);
+        setWatcherLocation(mapPoint);
         // Animate camera movement, offset latitude upward by 25% of latitudeDelta
         mapRef.current?.getCamera().then((cam) => {
             mapRef.current?.animateCamera({
@@ -815,8 +828,10 @@ export default function Home() {
   
   // When the user's endorsements change, or when the user inspects a new pin, we want to get an accurate count of the pin's endorsments.
   useEffect(() => {
-    if (inspected) fetchPinValidity(inspected.id)
-  }, [endorsed, inspected])
+    if (inspected && !inspected.isWatcher) {
+      fetchPinValidity(inspected.id);
+    }
+  }, [endorsed, inspected]);
 
   // Track user location on load
     useEffect(() => {
@@ -917,8 +932,13 @@ export default function Home() {
                       setShowWatchZonesMenu(true);
                     }}
                   />
-                  <Button title="Settings" onPress={() => { /* navigate to settings */ }} />
-                    <Button title="Logout" onPress={handleLogout} />    
+                <Button
+                title="Settings"
+                onPress={() => {
+                    router.push("/settings");
+                    toggleMenu(); // optional: close the slide-over
+                }}
+                />                     
                 </Animated.View>
                 <TouchableOpacity
                     style={{
@@ -1145,11 +1165,14 @@ export default function Home() {
                         <Text style={styles.popupText}>ID: {inspected?.id}</Text>
                         <Text style={styles.popupText}>Category: {inspected?.category}</Text>
                         { inspected?.isWatcher ? 
-                            <Button title={`Delete Zone`} onPress={() => {handleDeleteWatcher(inspected?.id)}}></Button> :
+                            <Button title={`Delete Zone`} color="red" onPress={() => {handleDeleteWatcher(inspected?.id)}}></Button> :
                             <Button title={`Confirmations ${inspected?.validity}`} onPress={() => {handleValidate(inspected?.id || "")}}></Button>
                         }
                         { inspected && endorsed.includes(inspected.id) &&
                             <Button title={`Unconfirm Report`} onPress={() => {handleUnvalidate(inspected.id)}}></Button>
+                        }
+                        { !inspected?.isWatcher &&
+                            <Button title="Delete Report" color="red" onPress={() => {handleDeletePin(inspected?.id)}}></Button>
                         }
                         <Button title="Close" onPress={() => {
                             hideAllPopups();
@@ -1328,3 +1351,4 @@ const styles = {
     color: '#555',
   },
 }
+  

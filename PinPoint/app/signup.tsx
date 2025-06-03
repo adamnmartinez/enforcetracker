@@ -26,14 +26,21 @@ export default function Signup() {
             const data = await response.json();
             if (response.status == 201) {
                 Alert.alert("You're almost done!", "Please check your e-mail to complete the registration process!")
-                //await signUp(data.token);
                 router.replace("/login");
             } else if (response.status == 400) {
-                Alert.alert("Bad Request", data.message);
+                Alert.alert("Registration Failed", data.message);
+            } else if (response.status == 409) {
+                if (data.conflict == "email") {
+                    Alert.alert("Registration Failed", "E-mail already in use.");
+                } else if (data.conflict == "username") {
+                    Alert.alert("Registration Failed", "Username already in use.");
+                } else {
+                    Alert.alert("Registration Failed", "Account information already in use.");
+                }
             } else if (response.status == 429) {
                 Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
             } else {
-                Alert.alert("Authentication Failed", data.message || "An unexpected error occured.")
+                Alert.alert("Registration Failed", data.message || "An unexpected error occured.")
             }
         } catch (error) {
             Alert.alert("Network Error", "An error occurred with the server. Please try again.");

@@ -60,6 +60,8 @@ export default function Login() {
                         },
                         ],
                 )
+            } else if (response.status == 401) {
+                Alert.alert("Login Failed", "Your username or password is incorrect.")
             } else if (response.status == 400) {
                 Alert.alert("Bad Request", data.message);
             } else if (response.status == 429) {

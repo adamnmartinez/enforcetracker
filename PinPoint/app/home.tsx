@@ -459,6 +459,8 @@ export default function Home() {
         fetchWatchersCall();
       } else if (response.status == 429) {
         Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
+      } else if (response.status == 403) {
+        Alert.alert("Watch Zone Creation Error", "Users are limited to two watch zones per account.");
       } else {
         Alert.alert("Watch Zone Creation Error", data.message || "Failed to create watcher");
       }
@@ -642,12 +644,12 @@ export default function Home() {
     if (inspectTarget instanceof Pin) {
       try {
         await fetchPinValidity(inspectTarget.id)
-        await setMapRegion({
-          latitude: inspectTarget.coordinates.latitude - 0.0003,
-          longitude: inspectTarget.coordinates.longitude,
-          latitudeDelta: 0.002,
-          longitudeDelta: 0.002,
-        })
+        // await setMapRegion({
+        //   latitude: inspectTarget.coordinates.latitude - 0.0003,
+        //   longitude: inspectTarget.coordinates.longitude,
+        //   latitudeDelta: 0.002,
+        //   longitudeDelta: 0.002,
+        // })
         await setInspected(inspectTarget)
       } catch (e) {
         console.log("An error occured inspecting a pin...")
@@ -698,6 +700,7 @@ export default function Home() {
         // Show inspector popup
         setShowInspector(true);
     };
+
 
   const handleDeleteWatcher = async (pin_id: string | undefined) => {
     Alert.alert(

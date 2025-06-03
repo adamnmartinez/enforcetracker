@@ -456,6 +456,7 @@ export default function Home() {
 
 
       if (response.status == 201) {
+        Alert.alert("Watch Zone Created!", `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`,);
         fetchWatchersCall();
       } else if (response.status == 429) {
         Alert.alert("Slow Down!", "You have sent too many requests, please try again later.");
@@ -623,11 +624,6 @@ export default function Home() {
     };
     mapRef.current?.animateToRegion(newRegion, 1500);
     setMapRegion(newRegion);
-
-    Alert.alert(
-      "Watch Zone Created!",
-      `New watcher at ${watcherLocation.longitude}, ${watcherLocation.latitude} with category ${watcherCategory}`,
-    );
 
     uploadWatcherCall(
       watcherCategory,

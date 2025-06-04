@@ -1,10 +1,11 @@
 import React, {useState, useContext} from "react";
-import { View, Text, TextInput, Button, Alert, StyleSheet } from "react-native";
+import { View, Text, TextInput, Button, Alert, StyleSheet, Image } from "react-native";
 import { AuthContext } from "./_contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { HOST } from "./server";
 import { authStyle, placeholderColor } from "./style";
-import * as Notifications from "expo-notifications"
+import * as Notifications from "expo-notifications";
+import PinPointLogo from "../assets/images/pinpoint_logo.png";
 
 export default function Login() {
     const { signIn } = useContext(AuthContext);
@@ -77,7 +78,7 @@ export default function Login() {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.header}>PinPoint</Text>
+            <Image source={PinPointLogo} style={styles.logo} resizeMode="contain" />
 
             <Text style={styles.title}>Login</Text>
             <TextInput
@@ -103,4 +104,4 @@ export default function Login() {
     );
 }
 
-const styles = authStyle
+const styles = authStyle;

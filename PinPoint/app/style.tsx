@@ -1,10 +1,12 @@
+import { Background } from "@react-navigation/elements";
 import { StyleSheet, Dimensions } from "react-native";
 
 const authStyle = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: "center",
-        padding: 20
+        padding: 20,
+        backgroundColor: "#fff",
     },
     title: {
         fontSize: 24,
@@ -23,7 +25,13 @@ const authStyle = StyleSheet.create({
         textAlign: "center",
         padding: 20,
         paddingBottom: 80,
-    }
+    },
+    logo: {
+    width: 250,      
+    height: 200,     
+    marginBottom: 32,
+    alignSelf: "center",
+  }
 });
 
 const homeStyle = StyleSheet.create({

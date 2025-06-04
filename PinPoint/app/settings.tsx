@@ -50,7 +50,6 @@ export default function SettingsScreen() {
 
   // 5) App version display
   const version =
-    Constants.manifest?.version ||
     Constants.expoConfig?.version ||
     "1.0.0";
 

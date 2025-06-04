@@ -164,6 +164,48 @@ export default function Home() {
   const [notification, setNotification] = useState<
     Notifications.Notification | undefined
   >(undefined);
+
+// ─────────────── Load and store the “muted” preference ───────────────
+const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
+
+// On mount, read the last‐saved setting from AsyncStorage
+useEffect(() => {
+  (async () => {
+    try {
+      const saved = await AsyncStorage.getItem("notificationsEnabled");
+      if (saved !== null) {
+        setNotificationsEnabled(saved === "true");
+      }
+    } catch (e) {
+      console.log("Failed to load notificationsEnabled:", e);
+    }
+  })();
+}, []);
+
+// ─────────────── Re‐set the push‐notification handler ───────────────
+useEffect(() => {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => {
+      // If toggle is OFF, drop every incoming notification silently:
+      if (!notificationsEnabled) {
+        return {
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+          shouldShowBanner: false,
+          shouldShowList: false,
+        };
+      }
+      // Otherwise (toggle ON), show a banner (no sound, no badge update):
+      return {
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      };
+    },
+  });
+}, [notificationsEnabled]);
+
   // Notification References
   const notificationListener = useRef<Notifications.EventSubscription>(null);
   const responseListener = useRef<Notifications.EventSubscription>(null);

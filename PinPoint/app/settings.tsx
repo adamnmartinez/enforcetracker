@@ -13,15 +13,16 @@ import { useRouter } from "expo-router";
 import { AuthContext } from "./_contexts/AuthContext";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { HOST } from "./server";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { signOut } = useContext(AuthContext);
+  const { signOut, userToken } = useContext(AuthContext);
 
-  // 1) Push‐notification toggle (default = true until we load a stored value)
+  // Push‐notification toggle (default = true until we load a stored value)
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
 
-  // 2) On mount, read the saved setting and update state
+  // On mount, read the saved setting and update state
   useEffect(() => {
     (async () => {
       try {
@@ -36,19 +37,37 @@ export default function SettingsScreen() {
     })();
   }, []);
 
-  // 3) Flip state and save to AsyncStorage
-  const toggleNotifications = (value: boolean) => {
-    setNotificationsEnabled(value);
-    AsyncStorage.setItem("notificationsEnabled", value ? "true" : "false");
-  };
+  // Flip state and save to AsyncStorage
+  const toggleNotifications = async (value: boolean) => {
+  setNotificationsEnabled(value);
+  AsyncStorage.setItem("notificationsEnabled", value ? "true" : "false");
 
-  // 4) Log‐out handler
+  // notify backend
+  try {
+    const response = await fetch(HOST + "/api/me/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: userToken ?? "",
+      },
+      body: JSON.stringify({ notificationsEnabled: value }),
+    });
+
+    if (!response.ok) {
+      console.error("Failed to update notificationsEnabled on server:", response.status);
+    }
+  } catch (e) {
+    console.error("Error calling /api/me/notifications:", e);
+  }
+};
+
+  // Log‐out handler
   const handleLogout = async () => {
     await signOut();
     router.replace("/login");
   };
 
-  // 5) App version display
+  // App version display
   const version =
     Constants.expoConfig?.version ||
     "1.0.0";

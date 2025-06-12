@@ -1,3 +1,3 @@
-const HOST = "https://enforcetrackerapi.onrender.com"
+const HOST = "https://enforcetrackerapi.onrender.com";
 
-export { HOST }
+export { HOST };

@@ -2,7 +2,7 @@ import React from "react";
 import Login from "./login";
 
 const index = () => {
-  return <Login/>;
+  return <Login />;
 };
 
 export default index;

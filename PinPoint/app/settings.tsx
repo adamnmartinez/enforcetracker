@@ -20,7 +20,8 @@ export default function SettingsScreen() {
   const { signOut, userToken } = useContext(AuthContext);
 
   // Push‐notification toggle (default = true until we load a stored value)
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
+  const [notificationsEnabled, setNotificationsEnabled] =
+    useState<boolean>(true);
 
   // On mount, read the saved setting and update state
   useEffect(() => {
@@ -39,27 +40,30 @@ export default function SettingsScreen() {
 
   // Flip state and save to AsyncStorage
   const toggleNotifications = async (value: boolean) => {
-  setNotificationsEnabled(value);
-  AsyncStorage.setItem("notificationsEnabled", value ? "true" : "false");
+    setNotificationsEnabled(value);
+    AsyncStorage.setItem("notificationsEnabled", value ? "true" : "false");
 
-  // notify backend
-  try {
-    const response = await fetch(HOST + "/api/me/notifications", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: userToken ?? "",
-      },
-      body: JSON.stringify({ notificationsEnabled: value }),
-    });
+    // notify backend
+    try {
+      const response = await fetch(HOST + "/api/me/notifications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: userToken ?? "",
+        },
+        body: JSON.stringify({ notificationsEnabled: value }),
+      });
 
-    if (!response.ok) {
-      console.error("Failed to update notificationsEnabled on server:", response.status);
+      if (!response.ok) {
+        console.error(
+          "Failed to update notificationsEnabled on server:",
+          response.status,
+        );
+      }
+    } catch (e) {
+      console.error("Error calling /api/me/notifications:", e);
     }
-  } catch (e) {
-    console.error("Error calling /api/me/notifications:", e);
-  }
-};
+  };
 
   // Log‐out handler
   const handleLogout = async () => {
@@ -68,14 +72,15 @@ export default function SettingsScreen() {
   };
 
   // App version display
-  const version =
-    Constants.expoConfig?.version ||
-    "1.0.0";
+  const version = Constants.expoConfig?.version || "1.0.0";
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
         <Text style={styles.header}>Settings</Text>
